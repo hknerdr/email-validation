@@ -1,5 +1,6 @@
 import React, { createContext, useReducer, useContext, ReactNode } from 'react';
 
+// Define the shape of the application's state.
 interface AppState {
   emails: string[];
   apiKeys: string[];
@@ -9,6 +10,7 @@ interface AppState {
   isStopped: boolean;
 }
 
+// Initial state for the application.
 const initialState: AppState = {
   emails: [],
   apiKeys: [''],
@@ -18,6 +20,7 @@ const initialState: AppState = {
   isStopped: false,
 };
 
+// Define the possible actions that can be dispatched to the reducer.
 type Action =
   | { type: 'SET_EMAILS'; payload: string[] }
   | { type: 'ADD_API_KEY'; payload: string }
@@ -27,6 +30,7 @@ type Action =
   | { type: 'SET_VALIDATED_EMAILS'; payload: any[] }
   | { type: 'STOP_VALIDATION' };
 
+// Reducer function to manage state transitions.
 const AppReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case 'SET_EMAILS':
@@ -48,15 +52,18 @@ const AppReducer = (state: AppState, action: Action): AppState => {
   }
 };
 
+// Create a context with a default value.
 const AppContext = createContext<{
   state: AppState;
   dispatch: React.Dispatch<Action>;
 }>({ state: initialState, dispatch: () => {} });
 
+// Define the props expected by the AppProvider.
 interface AppProviderProps {
   children: ReactNode;
 }
 
+// AppProvider component that wraps around the application.
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(AppReducer, initialState);
 
@@ -67,4 +74,5 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   );
 };
 
+// Custom hook to access the AppContext.
 export const useAppContext = () => useContext(AppContext);
