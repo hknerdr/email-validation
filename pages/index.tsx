@@ -1,10 +1,8 @@
-// pages/index.tsx
-
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { FileUpload } from '../components/FileUpload';
-import { ApiKeyInput } from '../components/ApiKeyInput';
-import { ValidationResults } from '../components/ValidationResults';
+import FileUpload from '../components/FileUpload';
+import ApiKeyInput from '../components/ApiKeyInput';
+import ValidationResults from '../components/ValidationResults';
 
 const IndexPage = () => {
   const { state, dispatch } = useAppContext();

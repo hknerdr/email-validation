@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 
-export const FileUpload = () => {
+const FileUpload = () => {
   const { dispatch } = useAppContext();
   const [file, setFile] = useState<File | null>(null);
 
@@ -39,3 +39,5 @@ export const FileUpload = () => {
     </div>
   );
 };
+
+export default FileUpload;
