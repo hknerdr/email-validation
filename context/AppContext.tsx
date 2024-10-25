@@ -10,7 +10,6 @@ interface AppState {
   isStopped: boolean;
 }
 
-// Initial state for the application.
 const initialState: AppState = {
   emails: [],
   apiKeys: [''],
@@ -64,7 +63,7 @@ interface AppProviderProps {
 }
 
 // AppProvider component that wraps around the application.
-export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
+export const AppProvider = ({ children }: AppProviderProps) => {
   const [state, dispatch] = useReducer(AppReducer, initialState);
 
   return (
