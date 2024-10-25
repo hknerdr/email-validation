@@ -4,12 +4,14 @@
   "dependencies": {
     "next": "^13.0.0",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react-dom": "^18.0.0",
+    "axios": "^1.4.0" // Ensure this is included for making HTTP requests
   },
   "devDependencies": {
     "typescript": "^5.0.0",
     "@types/react": "^18.0.0",
-    "@types/node": "^18.0.0"
+    "@types/node": "^18.0.0",
+    "@types/axios": "^1.4.0" // This provides TypeScript support for axios
   },
   "scripts": {
     "dev": "next dev",
