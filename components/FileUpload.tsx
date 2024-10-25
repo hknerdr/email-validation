@@ -1,31 +1,41 @@
-import React, { useRef } from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { parseCSV } from '../utils/csvParser';
 
-const FileUpload: React.FC = () => {
+export const FileUpload = () => {
   const { dispatch } = useAppContext();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const emails = await parseCSV(file);
-      dispatch({ type: 'SET_EMAILS', payload: emails });
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFile(e.target.files[0]);
     }
+  };
+
+  const handleFileUpload = () => {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result;
+      if (typeof result === 'string') {
+        const emails = result
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line);
+        dispatch({ type: 'SET_EMAILS', payload: emails });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: 'Unable to read the file. Please ensure it is a text-based CSV.' });
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
     <div>
-      <input
-        type="file"
-        accept=".csv"
-        ref={fileInputRef}
-        onChange={handleFileUpload}
-        style={{ display: 'none' }}
-      />
-      <button onClick={() => fileInputRef.current?.click()}>Upload CSV</button>
+      <input type="file" accept=".csv" onChange={handleFileChange} />
+      <button onClick={handleFileUpload} disabled={!file}>
+        Upload Emails
+      </button>
     </div>
   );
 };
-
-export default FileUpload;
