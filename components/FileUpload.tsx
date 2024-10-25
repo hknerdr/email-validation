@@ -1,121 +1,111 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
 
 const FileUpload = () => {
   const { dispatch } = useAppContext();
   const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      
-      // Validate file type
-      if (!selectedFile.name.endsWith('.csv')) {
-        dispatch({ 
-          type: 'SET_ERROR', 
-          payload: 'Please upload a CSV file' 
-        });
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email.trim());
+  };
+
+  const parseCSVContent = useCallback((content: string): string[] => {
+    // Split by newlines and/or commas
+    const rawEmails = content
+      .split(/[\r\n,]+/)
+      .map(line => line.trim())
+      .filter(Boolean); // Remove empty lines
+
+    // Validate and clean emails
+    const validEmails = rawEmails
+      .map(email => email.replace(/^["']|["']$/g, '').trim()) // Remove quotes
+      .filter(email => validateEmail(email));
+
+    return [...new Set(validEmails)]; // Remove duplicates
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+        dispatch({ type: 'SET_ERROR', payload: 'Please select a CSV file' });
+        setFile(null);
+        e.target.value = ''; // Reset input
         return;
       }
-      
       setFile(selectedFile);
+      dispatch({ type: 'SET_ERROR', payload: null });
     }
   };
 
   const handleFileUpload = async () => {
     if (!file) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: 'Please select a file first' 
-      });
+      dispatch({ type: 'SET_ERROR', payload: 'Please select a file first' });
       return;
     }
 
-    setIsUploading(true);
+    setIsProcessing(true);
     dispatch({ type: 'SET_ERROR', payload: null });
+    dispatch({ type: 'SET_LOADING', payload: true });
 
     try {
-      const reader = new FileReader();
-      
-      reader.onload = (event) => {
-        try {
-          const result = event.target?.result;
-          if (typeof result === 'string') {
-            // Split by common CSV delimiters and handle potential quoted emails
-            const emails = result
-              .split(/[\r\n,]+/)
-              .map(email => email.trim().replace(/^["']|["']$/g, '')) // Remove quotes
-              .filter(email => {
-                // Basic email validation
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                return email && emailRegex.test(email);
-              });
+      const text = await file.text();
+      const emails = parseCSVContent(text);
 
-            if (emails.length === 0) {
-              throw new Error('No valid email addresses found in the file');
-            }
+      if (emails.length === 0) {
+        throw new Error('No valid email addresses found in the file');
+      }
 
-            // Remove duplicates
-            const uniqueEmails = [...new Set(emails)];
-            
-            dispatch({ type: 'SET_EMAILS', payload: uniqueEmails });
-            dispatch({ 
-              type: 'SET_ERROR', 
-              payload: uniqueEmails.length !== emails.length 
-                ? `Loaded ${uniqueEmails.length} unique emails (${emails.length - uniqueEmails.length} duplicates removed)`
-                : `Loaded ${emails.length} emails successfully`
-            });
-          }
-        } catch (error) {
-          dispatch({ 
-            type: 'SET_ERROR', 
-            payload: error instanceof Error ? error.message : 'Failed to parse the file' 
-          });
-        }
-      };
-
-      reader.onerror = () => {
-        dispatch({ 
-          type: 'SET_ERROR', 
-          payload: 'Error reading the file' 
-        });
-      };
-
-      reader.readAsText(file);
-    } catch (error) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: 'Failed to process the file' 
+      dispatch({ type: 'SET_EMAILS', payload: emails });
+      dispatch({
+        type: 'SET_ERROR',
+        payload: `Successfully loaded ${emails.length} email${emails.length > 1 ? 's' : ''}`
       });
+      
+      // Reset file input
+      setFile(null);
+      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+      if (fileInput) {
+        fileInput.value = '';
+      }
+    } catch (error) {
+      dispatch({
+        type: 'SET_ERROR',
+        payload: error instanceof Error ? error.message : 'Failed to process the file'
+      });
+      dispatch({ type: 'SET_EMAILS', payload: [] });
     } finally {
-      setIsUploading(false);
+      setIsProcessing(false);
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex gap-2 items-center">
-        <input 
-          type="file" 
+    <div className="my-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <input
+          type="file"
           accept=".csv"
           onChange={handleFileChange}
-          className="border p-2 rounded"
+          className="p-2 border rounded"
+          disabled={isProcessing}
         />
         <button
           onClick={handleFileUpload}
-          disabled={!file || isUploading}
-          className={`px-4 py-2 rounded ${
-            !file || isUploading 
+          disabled={!file || isProcessing}
+          className={`px-4 py-2 rounded transition-colors ${
+            !file || isProcessing
               ? 'bg-gray-300 cursor-not-allowed'
               : 'bg-blue-500 hover:bg-blue-600 text-white'
           }`}
         >
-          {isUploading ? 'Processing...' : 'Upload Emails'}
+          {isProcessing ? 'Processing...' : 'Upload Emails'}
         </button>
       </div>
       {file && (
-        <p className="text-sm text-gray-600">
+        <p className="mt-2 text-sm text-gray-600">
           Selected file: {file.name}
         </p>
       )}
