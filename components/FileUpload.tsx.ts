@@ -16,10 +16,15 @@ export const FileUpload = () => {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = event.target?.result;
-      if (text) {
-        const emails = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line);
+      const result = event.target?.result;
+      if (typeof result === 'string') {
+        const emails = result
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line);
         dispatch({ type: 'SET_EMAILS', payload: emails });
+      } else {
+        dispatch({ type: 'SET_ERROR', payload: 'Unable to read the file. Please ensure it is a text-based CSV.' });
       }
     };
     reader.readAsText(file);
