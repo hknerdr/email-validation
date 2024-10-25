@@ -5,6 +5,7 @@ const FileUpload = () => {
   const { state, dispatch } = useAppContext();
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -13,9 +14,9 @@ const FileUpload = () => {
 
   const parseCSVContent = useCallback((content: string): string[] => {
     return content
-      .split(/[\r\n]+/) // Split by newlines only
+      .split(/[\r\n]+/)
       .map(line => line.trim())
-      .filter(line => line && validateEmail(line)); // Keep only valid emails
+      .filter(line => line && validateEmail(line));
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,6 +28,7 @@ const FileUpload = () => {
       }
       setFile(selectedFile);
       dispatch({ type: 'SET_ERROR', payload: null });
+      setMessage(null);
     }
   };
 
@@ -37,12 +39,12 @@ const FileUpload = () => {
     }
 
     setIsProcessing(true);
-    dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+    setMessage(null);
 
     try {
       const reader = new FileReader();
-      
+
       reader.onload = async (event) => {
         try {
           const content = event.target?.result as string;
@@ -58,10 +60,7 @@ const FileUpload = () => {
 
           // Update state with the parsed emails
           dispatch({ type: 'SET_EMAILS', payload: emails });
-          dispatch({
-            type: 'SET_ERROR',
-            payload: `Successfully loaded ${emails.length} email${emails.length > 1 ? 's' : ''}`
-          });
+          setMessage(`Successfully loaded ${emails.length} email${emails.length > 1 ? 's' : ''}`);
         } catch (error) {
           dispatch({
             type: 'SET_ERROR',
@@ -70,14 +69,12 @@ const FileUpload = () => {
           dispatch({ type: 'SET_EMAILS', payload: [] });
         } finally {
           setIsProcessing(false);
-          dispatch({ type: 'SET_LOADING', payload: false });
         }
       };
 
       reader.onerror = () => {
         dispatch({ type: 'SET_ERROR', payload: 'Error reading the file' });
         setIsProcessing(false);
-        dispatch({ type: 'SET_LOADING', payload: false });
       };
 
       reader.readAsText(file);
@@ -87,7 +84,6 @@ const FileUpload = () => {
         payload: error instanceof Error ? error.message : 'Failed to process the file'
       });
       setIsProcessing(false);
-      dispatch({ type: 'SET_LOADING', payload: false });
     }
   };
 
@@ -103,7 +99,7 @@ const FileUpload = () => {
         />
         <button
           onClick={handleFileUpload}
-          disabled={!file || isProcessing || state.loading}
+          disabled={!file || isProcessing}
           style={{
             padding: '0.5rem 1rem',
             backgroundColor: !file || isProcessing ? '#ccc' : '#4CAF50',
@@ -121,10 +117,13 @@ const FileUpload = () => {
           Selected file: {file.name}
         </div>
       )}
-      {state.emails.length > 0 && !state.error && (
+      {message && (
         <div style={{ marginTop: '1rem', color: '#4CAF50' }}>
-          {state.emails.length} email{state.emails.length !== 1 ? 's' : ''} loaded successfully
+          {message}
         </div>
+      )}
+      {state.error && (
+        <div style={{ color: 'red', marginTop: '1rem' }}>{state.error}</div>
       )}
     </div>
   );
