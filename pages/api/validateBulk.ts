@@ -1,40 +1,39 @@
-// pages/api/validateBulk.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 
 const MAILGUN_API_URL = 'https://api.mailgun.net/v4/address/validate';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { apiKeys, emails } = req.body;
+export default async function validateBulk(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    const { emails, apiKey } = req.body;
 
-  if (!emails || !apiKeys || !Array.isArray(apiKeys) || emails.length === 0) {
-    return res.status(400).json({ error: 'Emails and API keys are required' });
-  }
-
-  let results: any[] = [];
-  let currentKeyIndex = 0;
-
-  for (const email of emails) {
-    try {
-      const apiKey = apiKeys[currentKeyIndex];
-      const response = await axios.get(MAILGUN_API_URL, {
-        params: { address: email },
-        auth: {
-          username: 'api',
-          password: apiKey,
-        },
-      });
-
-      results.push({ email, is_valid: response.data.is_valid });
-
-      if (response.data.is_valid) {
-        // If quota is reached, move to the next API key
-        currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
-      }
-    } catch (error) {
-      return res.status(500).json({ error: 'Validation failed', details: error.message });
+    if (!emails || !apiKey) {
+      return res.status(400).json({ error: 'Missing required fields: emails or apiKey' });
     }
-  }
 
-  res.status(200).json(results);
+    const results = await Promise.all(
+      emails.map(async (email: string) => {
+        try {
+          const response = await axios.get(MAILGUN_API_URL, {
+            params: { address: email },
+            auth: {
+              username: 'api',
+              password: apiKey,
+            },
+          });
+          return { email, ...response.data };
+        } catch (error) {
+          if (axios.isAxiosError(error)) {
+            return { email, error: error.message || 'Axios error occurred' };
+          }
+          return { email, error: 'Unknown error occurred' };
+        }
+      })
+    );
+
+    return res.status(200).json({ results });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ error: 'Validation failed', details: errorMessage });
+  }
 }
