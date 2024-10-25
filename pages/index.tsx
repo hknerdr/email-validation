@@ -1,3 +1,4 @@
+// pages/index.tsx
 import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import FileUpload from '../components/FileUpload';
@@ -22,6 +23,7 @@ const IndexPage = () => {
     dispatch({ type: 'SET_ERROR', payload: null });
 
     try {
+      console.log('Sending request to /api/validateBulk');
       const response = await fetch('/api/validateBulk', {
         method: 'POST',
         headers: {
@@ -31,17 +33,23 @@ const IndexPage = () => {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`HTTP error! status: ${response.status}, body: ${errorText}`);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
 
       if (data.error) {
+        console.error(`API error: ${data.error}`);
         throw new Error(data.error);
       }
 
+      console.log('Validation results:', data.results);
+
       dispatch({ type: 'SET_VALIDATED_EMAILS', payload: data.results });
     } catch (error) {
+      console.error('Validation error:', error);
       dispatch({
         type: 'SET_ERROR',
         payload: error instanceof Error ? error.message : 'Validation failed. Please try again.'
