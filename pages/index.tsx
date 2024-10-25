@@ -41,13 +41,10 @@ const IndexPage = () => {
       }
 
       dispatch({ type: 'SET_VALIDATED_EMAILS', payload: data.results });
-      dispatch({ type: 'SET_ERROR', payload: null });
     } catch (error) {
       dispatch({
         type: 'SET_ERROR',
-        payload: error instanceof Error 
-          ? error.message 
-          : 'Validation failed. Please try again.'
+        payload: error instanceof Error ? error.message : 'Validation failed. Please try again.'
       });
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
@@ -55,36 +52,34 @@ const IndexPage = () => {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Email Validator</h1>
-      <div className="space-y-6">
+    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
+      <h1 style={{ marginBottom: '20px' }}>Email Validator</h1>
+      <div style={{ marginBottom: '20px' }}>
         <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} />
-        <FileUpload />
-        <div>
-          <button 
-            onClick={validateEmails} 
-            disabled={state.loading || !state.emails.length || !apiKey}
-            className={`px-4 py-2 rounded transition-colors ${
-              state.loading || !state.emails.length || !apiKey
-                ? 'bg-gray-300 cursor-not-allowed'
-                : 'bg-green-500 hover:bg-green-600 text-white'
-            }`}
-          >
-            {state.loading ? 'Validating...' : 'Validate Emails'}
-          </button>
-          {state.error && (
-            <p className="mt-2 text-red-500">{state.error}</p>
-          )}
-          {state.emails.length > 0 && !state.error && (
-            <p className="mt-2 text-green-600">
-              {state.emails.length} email{state.emails.length > 1 ? 's' : ''} ready for validation
-            </p>
-          )}
-        </div>
-        {state.validatedEmails.length > 0 && (
-          <ValidationResults validatedEmails={state.validatedEmails} />
-        )}
       </div>
+      <FileUpload />
+      <div style={{ marginTop: '20px' }}>
+        <button
+          onClick={validateEmails}
+          disabled={state.loading || !state.emails.length || !apiKey}
+          style={{
+            padding: '0.5rem 1rem',
+            backgroundColor: state.loading || !state.emails.length || !apiKey ? '#ccc' : '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: state.loading || !state.emails.length || !apiKey ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {state.loading ? 'Validating...' : 'Validate Emails'}
+        </button>
+      </div>
+      {state.error && (
+        <div style={{ color: 'red', marginTop: '10px' }}>{state.error}</div>
+      )}
+      {state.validatedEmails.length > 0 && (
+        <ValidationResults validatedEmails={state.validatedEmails} />
+      )}
     </div>
   );
 };
