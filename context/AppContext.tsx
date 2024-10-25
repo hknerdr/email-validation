@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, useContext } from 'react';
+import React, { createContext, useReducer, useContext, ReactNode } from 'react';
 
 interface AppState {
   emails: string[];
@@ -53,7 +53,11 @@ const AppContext = createContext<{
   dispatch: React.Dispatch<Action>;
 }>({ state: initialState, dispatch: () => {} });
 
-export const AppProvider: React.FC = ({ children }) => {
+interface AppProviderProps {
+  children: ReactNode;
+}
+
+export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(AppReducer, initialState);
 
   return (
