@@ -1,51 +1,67 @@
+// pages/index.tsx
+
 import React, { useState } from 'react';
-import EmailInput from '../components/EmailInput';
-import ApiKeyInput from '../components/ApiKeyInput';
-import ValidationResults from '../components/ValidationResults';
+import { useAppContext } from '../context/AppContext';
+import { FileUpload } from '../components/FileUpload';
+import { ApiKeyInput } from '../components/ApiKeyInput';
+import { ValidationResults } from '../components/ValidationResults';
 
-const EmailValidator = () => {
-  const [email, setEmail] = useState('');
-  const [apiKeys, setApiKeys] = useState<string[]>(['']);
-  const [validatedEmails, setValidatedEmails] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [isStopped, setIsStopped] = useState(false);
+const IndexPage = () => {
+  const { state, dispatch } = useAppContext();
+  const [apiKey, setApiKey] = useState('');
 
-  const addApiKey = () => setApiKeys([...apiKeys, '']);
+  const validateEmails = async () => {
+    if (!state.emails.length) {
+      dispatch({ type: 'SET_ERROR', payload: 'No emails uploaded.' });
+      return;
+    }
+    if (!apiKey) {
+      dispatch({ type: 'SET_ERROR', payload: 'API key is required.' });
+      return;
+    }
 
-  const stopValidation = () => {
-    setIsStopped(true);
-    setLoading(false);
-  };
+    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_ERROR', payload: null });
 
-  const validateEmail = async () => {
-    // Validation logic here...
-  };
+    try {
+      const response = await fetch('/api/validateBulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ emails: state.emails, apiKey }),
+      });
 
-  const downloadCSV = () => {
-    // CSV download logic here...
+      const data = await response.json();
+
+      if (data.error) {
+        dispatch({ type: 'SET_ERROR', payload: data.error });
+      } else {
+        dispatch({ type: 'SET_VALIDATED_EMAILS', payload: data.results });
+      }
+    } catch (error) {
+      dispatch({ type: 'SET_ERROR', payload: 'Validation failed. Please try again.' });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
   };
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial' }}>
       <h1>Email Validator</h1>
-      <EmailInput
-        email={email}
-        setEmail={setEmail}
-        onValidate={validateEmail}
-        loading={loading}
-      />
-      <button onClick={stopValidation} disabled={!loading}>
-        Stop
+      <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} />
+      <FileUpload />
+      <button 
+        onClick={validateEmails} 
+        disabled={state.loading || !state.emails.length || !apiKey}
+        style={{ padding: '10px', marginTop: '10px' }}
+      >
+        {state.loading ? 'Validating...' : 'Validate Emails'}
       </button>
-      <button onClick={downloadCSV} disabled={validatedEmails.length === 0}>
-        Download CSV
-      </button>
-      <ApiKeyInput apiKeys={apiKeys} setApiKeys={setApiKeys} addApiKey={addApiKey} />
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      <ValidationResults validatedEmails={validatedEmails} />
+      {state.error && <p style={{ color: 'red' }}>{state.error}</p>}
+      <ValidationResults validatedEmails={state.validatedEmails} />
     </div>
   );
 };
 
-export default EmailValidator;
+export default IndexPage;
