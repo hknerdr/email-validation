@@ -4,7 +4,13 @@ import { useAppContext } from '../context/AppContext';
 import FileUpload from '../components/FileUpload';
 import ApiKeyInput from '../components/ApiKeyInput';
 import ValidationProgress from '../components/ValidationProgress';
-import { ArrowRight, Check, AlertTriangle, RefreshCcw } from 'lucide-react';
+
+// Define the Log type
+interface Log {
+  message: string;
+  type: 'info' | 'success' | 'error' | 'warning';
+  timestamp: string;
+}
 
 export default function Home() {
   const { state, dispatch } = useAppContext();
@@ -13,7 +19,7 @@ export default function Home() {
   const [isValidating, setIsValidating] = useState(false);
   const [processedEmails, setProcessedEmails] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<Log[]>([]); // Updated type here
   const [validationStats, setValidationStats] = useState({
     totalValid: 0,
     totalInvalid: 0,
@@ -21,7 +27,11 @@ export default function Home() {
   });
 
   const addLog = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
-    setLogs(prev => [...prev, { message, type, timestamp: new Date().toLocaleTimeString() }]);
+    setLogs(prev => [...prev, { 
+      message, 
+      type, 
+      timestamp: new Date().toLocaleTimeString() 
+    }]);
   };
 
   const handleValidation = async () => {
@@ -40,7 +50,6 @@ export default function Home() {
     addLog(`Preparing to validate ${state.emails.length} emails`, 'info');
 
     try {
-      // Validate API key format
       addLog('Validating API credentials...', 'info');
       
       const response = await fetch('/api/validateBulk', {
@@ -99,7 +108,7 @@ export default function Home() {
       <div className="max-w-6xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
         {/* Header Section */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4 font-display">
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Email Validation Suite
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -147,14 +156,14 @@ export default function Home() {
             >
               {isValidating ? (
                 <>
-                  <RefreshCcw className="animate-spin -ml-1 mr-3 h-5 w-5" />
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
                   Validating...
                 </>
               ) : (
-                <>
-                  Start Validation
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </>
+                'Start Validation'
               )}
             </button>
           </div>
@@ -200,18 +209,6 @@ export default function Home() {
                   <div className="text-lg font-semibold text-gray-700">
                     {validationStats.avgProcessingTime.toFixed(2)} seconds
                   </div>
-                </div>
-
-                <div className="mt-6">
-                  <button
-                    onClick={() => {
-                      // Add export functionality here
-                      addLog('Preparing export...', 'info');
-                    }}
-                    className="px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors duration-200"
-                  >
-                    Export Results
-                  </button>
                 </div>
               </div>
             )}
