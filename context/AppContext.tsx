@@ -3,7 +3,9 @@ import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 // Define types for our state and actions
 interface Email {
   email: string;
-  isValid?: boolean;
+  is_valid: boolean;
+  reason?: string;
+  success?: boolean;
 }
 
 interface State {

@@ -5,7 +5,7 @@ import pLimit from 'p-limit';
 const MAILGUN_BULK_API_URL = 'https://api.mailgun.net/v4/address/validate/bulk';
 const MAILGUN_BULK_CHECK_URL = 'https://api.mailgun.net/v4/address/validate/bulk/LIST_ID';
 const MAX_RETRIES = 3;
-const CHUNK_SIZE = 250; // Further reduced chunk size
+const CHUNK_SIZE = 250;
 
 export const config = {
   api: {
@@ -18,7 +18,7 @@ export const config = {
 };
 
 const axiosInstance = axios.create({
-  timeout: 180000, // Increased to 180 seconds
+  timeout: 180000,
 });
 
 interface BulkValidationResponse {
@@ -94,7 +94,7 @@ async function checkBulkValidationStatus(
 async function waitForValidationResults(
   listId: string, 
   apiKey: string, 
-  maxAttempts = 20 // Increased max attempts
+  maxAttempts = 20
 ): Promise<ValidationResult[]> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -108,7 +108,6 @@ async function waitForValidationResults(
         throw new Error('Bulk validation failed: ' + status.error || 'Unknown error');
       }
       
-      // Progressive delay between checks
       const delay = Math.min(2000 + (attempt * 1000), 10000);
       await new Promise(resolve => setTimeout(resolve, delay));
     } catch (error) {
@@ -134,7 +133,6 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
       });
     }
 
-    // Process in smaller chunks
     const emailChunks = [];
     for (let i = 0; i < emails.length; i += CHUNK_SIZE) {
       emailChunks.push(emails.slice(i, i + CHUNK_SIZE));
@@ -144,7 +142,6 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
     const allResults: ValidationResult[] = [];
     const errors: string[] = [];
 
-    // Process chunks sequentially with rate limiting
     for (let i = 0; i < emailChunks.length; i++) {
       const chunk = emailChunks[i];
       try {
@@ -158,16 +155,14 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
         
         allResults.push(...bulkSubmission);
 
-        // Add larger delay between chunks
         if (i < emailChunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 8000)); // Increased delay
+          await new Promise(resolve => setTimeout(resolve, 8000));
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         errors.push(`Chunk ${i + 1} error: ${errorMessage}`);
         console.error(`Error processing chunk ${i + 1}:`, errorMessage);
         
-        // Add extra delay after error
         await new Promise(resolve => setTimeout(resolve, 15000));
       }
     }
