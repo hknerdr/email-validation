@@ -1,10 +1,18 @@
+// components/ValidationProgress.tsx
 import React from 'react';
+import { AlertTriangle, Check, Info, RefreshCcw } from 'lucide-react';
+
+interface Log {
+  message: string;
+  type: 'info' | 'success' | 'error' | 'warning';
+  timestamp: string;
+}
 
 interface ValidationProgressProps {
   totalEmails: number;
   processedEmails: number;
   errors: string[];
-  logs: string[];
+  logs: Log[];
   isValidating: boolean;
 }
 
@@ -17,60 +25,90 @@ const ValidationProgress: React.FC<ValidationProgressProps> = ({
 }) => {
   const progress = (processedEmails / totalEmails) * 100;
 
+  const getLogIcon = (type: string) => {
+    switch (type) {
+      case 'success':
+        return <Check className="w-4 h-4 text-green-500" />;
+      case 'error':
+        return <AlertTriangle className="w-4 h-4 text-red-500" />;
+      case 'warning':
+        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      default:
+        return <Info className="w-4 h-4 text-blue-500" />;
+    }
+  };
+
+  const getLogClass = (type: string) => {
+    switch (type) {
+      case 'success':
+        return 'text-green-700 bg-green-50';
+      case 'error':
+        return 'text-red-700 bg-red-50';
+      case 'warning':
+        return 'text-yellow-700 bg-yellow-50';
+      default:
+        return 'text-blue-700 bg-blue-50';
+    }
+  };
+
   return (
-    <div className="mt-6 space-y-4">
-      {/* Modern Progress Bar */}
-      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-        <div className="mb-2 flex justify-between text-sm text-gray-600">
-          <span className="font-medium">Validation Progress</span>
-          <span className="font-semibold">{Math.round(progress)}%</span>
+    <div className="space-y-6">
+      {/* Progress Bar */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div className="mb-4 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-gray-800">Validation Progress</h3>
+          <span className="text-lg font-bold text-gray-900">{Math.round(progress)}%</span>
         </div>
-        <div className="w-full bg-gray-100 rounded-full h-3">
+        <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
           <div
-            className="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full transition-all duration-500 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-500 ease-out relative"
             style={{ width: `${progress}%` }}
           >
-            <div className="animate-pulse bg-white/20 h-full rounded-full"></div>
+            <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
           </div>
         </div>
-        <div className="mt-2 text-sm text-gray-500">
+        <div className="mt-3 text-sm text-gray-600">
           {processedEmails} of {totalEmails} emails processed
         </div>
       </div>
 
-      {/* Terminal-like Log Display */}
-      <div className="bg-gray-900 rounded-lg shadow-lg p-4 font-mono text-sm">
-        <div className="flex items-center mb-2 pb-2 border-b border-gray-700">
-          <div className="flex space-x-2">
+      {/* Log Console */}
+      <div className="bg-gray-900 rounded-xl shadow-lg">
+        <div className="border-b border-gray-800 p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
             <div className="w-3 h-3 rounded-full bg-red-500"></div>
             <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
             <div className="w-3 h-3 rounded-full bg-green-500"></div>
           </div>
-          <span className="ml-4 text-gray-400">Validation Log</span>
+          <span className="text-gray-400 text-sm">Validation Log</span>
         </div>
-        <div className="max-h-60 overflow-y-auto space-y-1 text-gray-300">
-          {logs.map((log, index) => (
-            <div key={index} className="flex">
-              <span className="text-green-400 mr-2">$</span>
-              <span>{log}</span>
-            </div>
-          ))}
-          {isValidating && (
-            <div className="flex items-center">
-              <span className="text-green-400 mr-2">$</span>
-              <span className="animate-pulse">Processing...</span>
-            </div>
-          )}
+        <div className="p-4">
+          <div className="max-h-80 overflow-y-auto space-y-2 font-mono text-sm">
+            {logs.map((log, index) => (
+              <div 
+                key={index} 
+                className={`flex items-center space-x-2 p-2 rounded ${getLogClass(log.type)}`}
+              >
+                {getLogIcon(log.type)}
+                <span className="text-gray-500">[{log.timestamp}]</span>
+                <span>{log.message}</span>
+              </div>
+            ))}
+            {isValidating && (
+              <div className="flex items-center space-x-2 p-2 text-blue-500">
+                <RefreshCcw className="w-4 h-4 animate-spin" />
+                <span>Processing...</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Error Display */}
+      {/* Errors Display */}
       {errors.length > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
           <div className="flex items-center mb-2">
-            <svg className="w-5 h-5 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-            </svg>
+            <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
             <h4 className="text-red-800 font-semibold">Validation Errors</h4>
           </div>
           <div className="space-y-1">
