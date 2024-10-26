@@ -5,7 +5,7 @@ import pLimit from 'p-limit';
 const MAILGUN_BULK_API_URL = 'https://api.mailgun.net/v4/address/validate/bulk';
 const MAILGUN_BULK_CHECK_URL = 'https://api.mailgun.net/v4/address/validate/bulk/LIST_ID';
 const MAX_RETRIES = 3;
-const CHUNK_SIZE = 500; // Reduced from 1000 to 500 for better reliability
+const CHUNK_SIZE = 250; // Further reduced chunk size
 
 export const config = {
   api: {
@@ -18,7 +18,7 @@ export const config = {
 };
 
 const axiosInstance = axios.create({
-  timeout: 120000, // Increased to 120 seconds
+  timeout: 180000, // Increased to 180 seconds
 });
 
 interface BulkValidationResponse {
@@ -51,7 +51,6 @@ async function submitBulkValidation(
     return response.data;
   } catch (error) {
     if (retryCount < MAX_RETRIES) {
-      // Exponential backoff
       const delay = Math.pow(2, retryCount) * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
       return submitBulkValidation(emails, apiKey, retryCount + 1);
@@ -95,7 +94,7 @@ async function checkBulkValidationStatus(
 async function waitForValidationResults(
   listId: string, 
   apiKey: string, 
-  maxAttempts = 15
+  maxAttempts = 20 // Increased max attempts
 ): Promise<ValidationResult[]> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -114,7 +113,6 @@ async function waitForValidationResults(
       await new Promise(resolve => setTimeout(resolve, delay));
     } catch (error) {
       if (attempt === maxAttempts - 1) throw error;
-      // Continue to next attempt if not final attempt
     }
   }
   
@@ -122,7 +120,9 @@ async function waitForValidationResults(
 }
 
 export default async function validateBulk(req: NextApiRequest, res: NextApiResponse) {
-  console.log('Starting bulk validation process');
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
     const { emails, apiKey } = req.body;
@@ -140,7 +140,7 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
       emailChunks.push(emails.slice(i, i + CHUNK_SIZE));
     }
 
-    const limit = pLimit(1); // Reduced concurrent requests to 1
+    const limit = pLimit(1);
     const allResults: ValidationResult[] = [];
     const errors: string[] = [];
 
@@ -160,12 +160,15 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
 
         // Add larger delay between chunks
         if (i < emailChunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise(resolve => setTimeout(resolve, 8000)); // Increased delay
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         errors.push(`Chunk ${i + 1} error: ${errorMessage}`);
         console.error(`Error processing chunk ${i + 1}:`, errorMessage);
+        
+        // Add extra delay after error
+        await new Promise(resolve => setTimeout(resolve, 15000));
       }
     }
 
