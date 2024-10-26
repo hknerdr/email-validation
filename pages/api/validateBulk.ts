@@ -46,6 +46,10 @@ async function submitBulkValidation(
           username: 'api',
           password: apiKey,
         },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
       }
     );
     return response.data;
@@ -58,12 +62,24 @@ async function submitBulkValidation(
     
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
+      if (axiosError.response?.status === 401) {
+        throw new Error('Invalid API key or unauthorized access');
+      }
       if (axiosError.response?.status === 504) {
         throw new Error('Gateway timeout - request took too long. Please try with a smaller batch.');
       }
-      throw new Error(`API Error: ${axiosError.response?.status} - ${axiosError.message}`);
+      
+      // Try to extract error message from response
+      const errorData = axiosError.response?.data;
+      const errorMessage = typeof errorData === 'object' && errorData !== null 
+        ? JSON.stringify(errorData)
+        : typeof errorData === 'string' 
+          ? errorData
+          : axiosError.message;
+          
+      throw new Error(`API Error (${axiosError.response?.status}): ${errorMessage}`);
     }
-    throw error;
+    throw new Error(`Unexpected error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -79,6 +95,9 @@ async function checkBulkValidationStatus(
         username: 'api',
         password: apiKey,
       },
+      headers: {
+        Accept: 'application/json',
+      },
     });
     return response.data;
   } catch (error) {
@@ -86,6 +105,18 @@ async function checkBulkValidationStatus(
       const delay = Math.pow(2, retryCount) * 1000;
       await new Promise(resolve => setTimeout(resolve, delay));
       return checkBulkValidationStatus(listId, apiKey, retryCount + 1);
+    }
+    
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      const errorData = axiosError.response?.data;
+      const errorMessage = typeof errorData === 'object' && errorData !== null 
+        ? JSON.stringify(errorData)
+        : typeof errorData === 'string' 
+          ? errorData
+          : axiosError.message;
+          
+      throw new Error(`Status check failed (${axiosError.response?.status}): ${errorMessage}`);
     }
     throw error;
   }
@@ -105,12 +136,14 @@ async function waitForValidationResults(
       }
       
       if (status.status === 'failed') {
-        throw new Error('Bulk validation failed: ' + status.error || 'Unknown error');
+        throw new Error('Bulk validation failed: ' + (status.error || 'Unknown error'));
       }
       
+      // Exponential backoff with max delay of 10 seconds
       const delay = Math.min(2000 + (attempt * 1000), 10000);
       await new Promise(resolve => setTimeout(resolve, delay));
     } catch (error) {
+      console.error(`Attempt ${attempt + 1} failed:`, error);
       if (attempt === maxAttempts - 1) throw error;
     }
   }
@@ -130,6 +163,14 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
       return res.status(400).json({ 
         error: 'Missing required fields',
         details: !emails?.length ? 'No emails provided' : 'No API key provided'
+      });
+    }
+
+    // Validate API key format
+    if (!apiKey.startsWith('key-') || apiKey.length < 10) {
+      return res.status(400).json({
+        error: 'Invalid API key format',
+        details: 'API key should start with "key-" and be at least 10 characters long'
       });
     }
 
@@ -155,6 +196,7 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
         
         allResults.push(...bulkSubmission);
 
+        // Add delay between chunks to avoid rate limiting
         if (i < emailChunks.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 8000));
         }
@@ -163,6 +205,7 @@ export default async function validateBulk(req: NextApiRequest, res: NextApiResp
         errors.push(`Chunk ${i + 1} error: ${errorMessage}`);
         console.error(`Error processing chunk ${i + 1}:`, errorMessage);
         
+        // Longer delay after error
         await new Promise(resolve => setTimeout(resolve, 15000));
       }
     }
