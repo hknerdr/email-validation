@@ -1,94 +1,200 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import pLimit from 'p-limit';
 
-const MAILGUN_API_URL = 'https://api.mailgun.net/v4/address/validate';
-// Increase timeout for the API route
+const MAILGUN_BULK_API_URL = 'https://api.mailgun.net/v4/address/validate/bulk';
+const MAILGUN_BULK_CHECK_URL = 'https://api.mailgun.net/v4/address/validate/bulk/LIST_ID';
+const MAX_RETRIES = 3;
+const CHUNK_SIZE = 500; // Reduced from 1000 to 500 for better reliability
+
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '4mb', // Adjust as needed
+      sizeLimit: '4mb',
     },
     responseLimit: false,
     externalResolver: true,
   },
 };
 
-// Configure axios with timeout
 const axiosInstance = axios.create({
-  timeout: 30000, // 30 seconds timeout
+  timeout: 120000, // Increased to 120 seconds
 });
 
-async function validateSingleEmail(email: string, apiKey: string) {
+interface BulkValidationResponse {
+  id: string;
+  message: string;
+}
+
+interface ValidationResult {
+  address: string;
+  is_valid: boolean;
+  reason?: string;
+}
+
+async function submitBulkValidation(
+  emails: string[], 
+  apiKey: string, 
+  retryCount = 0
+): Promise<BulkValidationResponse> {
   try {
-    const response = await axiosInstance.get(MAILGUN_API_URL, {
-      params: { address: email },
+    const response = await axiosInstance.post<BulkValidationResponse>(
+      MAILGUN_BULK_API_URL,
+      { addresses: emails },
+      {
+        auth: {
+          username: 'api',
+          password: apiKey,
+        },
+      }
+    );
+    return response.data;
+  } catch (error) {
+    if (retryCount < MAX_RETRIES) {
+      // Exponential backoff
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return submitBulkValidation(emails, apiKey, retryCount + 1);
+    }
+    
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      if (axiosError.response?.status === 504) {
+        throw new Error('Gateway timeout - request took too long. Please try with a smaller batch.');
+      }
+      throw new Error(`API Error: ${axiosError.response?.status} - ${axiosError.message}`);
+    }
+    throw error;
+  }
+}
+
+async function checkBulkValidationStatus(
+  listId: string, 
+  apiKey: string, 
+  retryCount = 0
+): Promise<any> {
+  try {
+    const checkUrl = MAILGUN_BULK_CHECK_URL.replace('LIST_ID', listId);
+    const response = await axiosInstance.get(checkUrl, {
       auth: {
         username: 'api',
         password: apiKey,
       },
     });
-    return { email, ...response.data, success: true };
+    return response.data;
   } catch (error) {
-    console.error(`Error validating email ${email}:`, error);
-    if (axios.isAxiosError(error)) {
-      return {
-        email,
-        error: error.message || 'Axios error occurred',
-        status: error.response?.status,
-        data: error.response?.data,
-        success: false,
-      };
+    if (retryCount < MAX_RETRIES) {
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return checkBulkValidationStatus(listId, apiKey, retryCount + 1);
     }
-    return { email, error: 'Unknown error occurred', success: false };
+    throw error;
   }
 }
 
+async function waitForValidationResults(
+  listId: string, 
+  apiKey: string, 
+  maxAttempts = 15
+): Promise<ValidationResult[]> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const status = await checkBulkValidationStatus(listId, apiKey);
+      
+      if (status.status === 'completed') {
+        return status.results;
+      }
+      
+      if (status.status === 'failed') {
+        throw new Error('Bulk validation failed: ' + status.error || 'Unknown error');
+      }
+      
+      // Progressive delay between checks
+      const delay = Math.min(2000 + (attempt * 1000), 10000);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    } catch (error) {
+      if (attempt === maxAttempts - 1) throw error;
+      // Continue to next attempt if not final attempt
+    }
+  }
+  
+  throw new Error('Validation timed out after maximum attempts');
+}
+
 export default async function validateBulk(req: NextApiRequest, res: NextApiResponse) {
-  console.log('Received request to /api/validateBulk');
+  console.log('Starting bulk validation process');
 
   try {
     const { emails, apiKey } = req.body;
 
-    if (!emails || !apiKey) {
-      return res.status(400).json({ error: 'Missing required fields: emails or apiKey' });
+    if (!emails?.length || !apiKey) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        details: !emails?.length ? 'No emails provided' : 'No API key provided'
+      });
     }
 
-    // Split emails into smaller chunks
-    const chunkSize = 50;
+    // Process in smaller chunks
     const emailChunks = [];
-    for (let i = 0; i < emails.length; i += chunkSize) {
-      emailChunks.push(emails.slice(i, i + chunkSize));
+    for (let i = 0; i < emails.length; i += CHUNK_SIZE) {
+      emailChunks.push(emails.slice(i, i + CHUNK_SIZE));
     }
 
-    const limit = pLimit(3); // Reduced concurrency to avoid rate limits
-    const results = [];
+    const limit = pLimit(1); // Reduced concurrent requests to 1
+    const allResults: ValidationResult[] = [];
+    const errors: string[] = [];
 
-    // Process chunks sequentially
-    for (const chunk of emailChunks) {
-      const chunkResults = await Promise.all(
-        chunk.map((email: string) =>
-          limit(() => validateSingleEmail(email, apiKey))
-        )
-      );
-      results.push(...chunkResults);
+    // Process chunks sequentially with rate limiting
+    for (let i = 0; i < emailChunks.length; i++) {
+      const chunk = emailChunks[i];
+      try {
+        console.log(`Processing chunk ${i + 1}/${emailChunks.length}`);
+        
+        const bulkSubmission = await limit(async () => {
+          const submission = await submitBulkValidation(chunk, apiKey);
+          const results = await waitForValidationResults(submission.id, apiKey);
+          return results;
+        });
+        
+        allResults.push(...bulkSubmission);
 
-      // Add a small delay between chunks to avoid rate limits
-      if (emailChunks.indexOf(chunk) < emailChunks.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Add larger delay between chunks
+        if (i < emailChunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`Chunk ${i + 1} error: ${errorMessage}`);
+        console.error(`Error processing chunk ${i + 1}:`, errorMessage);
       }
     }
 
-    return res.status(200).json({ 
-      results,
-      totalProcessed: results.length,
-      successful: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length
+    if (allResults.length === 0 && errors.length > 0) {
+      return res.status(500).json({
+        error: 'All validation attempts failed',
+        details: errors
+      });
+    }
+
+    return res.status(200).json({
+      results: allResults.map(result => ({
+        email: result.address,
+        is_valid: result.is_valid,
+        reason: result.reason,
+        success: true
+      })),
+      totalProcessed: allResults.length,
+      successful: allResults.filter(r => r.is_valid).length,
+      failed: allResults.filter(r => !r.is_valid).length,
+      errors: errors.length > 0 ? errors : undefined
     });
 
   } catch (error) {
     console.error('Validation failed:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return res.status(500).json({ error: 'Validation failed', details: errorMessage });
+    return res.status(500).json({ 
+      error: 'Validation failed', 
+      details: errorMessage 
+    });
   }
 }
