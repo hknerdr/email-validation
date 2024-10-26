@@ -1,42 +1,33 @@
 // pages/index.tsx
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 import FileUpload from '../components/FileUpload';
 import ApiKeyInput from '../components/ApiKeyInput';
 import ValidationProgress from '../components/ValidationProgress';
 
-// Define the Log type
-interface Log {
-  message: string;
-  type: 'info' | 'success' | 'error' | 'warning';
-  timestamp: string;
-}
-
-export default function Home() {
+const IndexPage = () => {
   const { state, dispatch } = useAppContext();
   const [apiKey, setApiKey] = useState('');
-  const [accountId, setAccountId] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [processedEmails, setProcessedEmails] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
-  const [logs, setLogs] = useState<Log[]>([]); // Updated type here
-  const [validationStats, setValidationStats] = useState({
-    totalValid: 0,
-    totalInvalid: 0,
-    avgProcessingTime: 0,
-  });
+  const [logs, setLogs] = useState<Array<{
+    message: string;
+    type: 'info' | 'success' | 'error' | 'warning';
+    timestamp: string;
+  }>>([]);
 
   const addLog = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
-    setLogs(prev => [...prev, { 
-      message, 
-      type, 
-      timestamp: new Date().toLocaleTimeString() 
+    setLogs(prev => [...prev, {
+      message,
+      type,
+      timestamp: new Date().toLocaleTimeString()
     }]);
   };
 
   const handleValidation = async () => {
-    if (!apiKey || !accountId) {
-      setErrors(['Please enter both your Mailgun API key and Account ID']);
+    if (!apiKey) {
+      setErrors(['Please enter your Mailgun API key']);
       return;
     }
 
@@ -45,23 +36,14 @@ export default function Home() {
     setErrors([]);
     setLogs([]);
     
-    const startTime = Date.now();
     addLog('Initializing validation process...', 'info');
     addLog(`Preparing to validate ${state.emails.length} emails`, 'info');
 
     try {
-      addLog('Validating API credentials...', 'info');
-      
       const response = await fetch('/api/validateBulk', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          emails: state.emails,
-          apiKey,
-          accountId,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: state.emails, apiKey }),
       });
 
       if (!response.ok) {
@@ -71,28 +53,18 @@ export default function Home() {
 
       const data = await response.json();
       
-      if (data.errors?.length) {
-        setErrors(data.errors);
-        data.errors.forEach((error: string) => addLog(error, 'error'));
+      if (data.job?.summary) {
+        const { result } = data.job.summary;
+        setProcessedEmails(data.job.records_processed || 0);
+        
+        addLog(`Validation completed successfully!`, 'success');
+        addLog(`Deliverable emails: ${result.deliverable}`, 'success');
+        addLog(`Undeliverable emails: ${result.undeliverable}`, 'warning');
+        addLog(`Do not send: ${result.do_not_send}`, 'warning');
+        addLog(`Catch-all domains: ${result.catch_all}`, 'info');
+        addLog(`Unknown status: ${result.unknown}`, 'info');
       }
 
-      dispatch({ type: 'SET_VALIDATED_EMAILS', payload: data.results });
-      
-      setProcessedEmails(data.totalProcessed);
-      const endTime = Date.now();
-      const processingTime = (endTime - startTime) / 1000;
-
-      setValidationStats({
-        totalValid: data.results.filter((r: any) => r.is_valid).length,
-        totalInvalid: data.results.filter((r: any) => !r.is_valid).length,
-        avgProcessingTime: processingTime,
-      });
-
-      addLog(`Validation completed successfully in ${processingTime.toFixed(2)} seconds`, 'success');
-      addLog(`Processed ${data.totalProcessed} emails`, 'info');
-      addLog(`Found ${data.results.filter((r: any) => r.is_valid).length} valid emails`, 'success');
-      addLog(`Found ${data.results.filter((r: any) => !r.is_valid).length} invalid emails`, 'warning');
-      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setErrors([errorMessage]);
@@ -104,73 +76,75 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="max-w-6xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-        {/* Header Section */}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+        {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
+          <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-4">
             Email Validation Suite
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Validate your email lists in bulk using Mailgun's powerful validation service.
-            Get detailed insights and improve your email deliverability.
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Professional email validation powered by Mailgun. Ensure your email list is clean, 
+            deliverable, and optimized for maximum engagement.
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Configuration Panel */}
+          {/* Left Panel - Configuration */}
           <div className="lg:col-span-1 space-y-6">
-            {/* API Configuration Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                API Configuration
-              </h2>
-              <ApiKeyInput 
-                apiKey={apiKey} 
-                setApiKey={setApiKey}
-                accountId={accountId}
-                setAccountId={setAccountId}
-              />
+            {/* API Config Card */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">API Configuration</h2>
+              <ApiKeyInput apiKey={apiKey} setApiKey={setApiKey} />
             </div>
 
             {/* File Upload Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                Email List Upload
-              </h2>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Email List Upload</h2>
               <FileUpload />
+              
+              {state.emails.length > 0 && (
+                <div className="mt-4 text-sm text-gray-600">
+                  {state.emails.length} emails loaded
+                </div>
+              )}
             </div>
 
             {/* Validation Button */}
             <button
               onClick={handleValidation}
-              disabled={isValidating || !apiKey || !accountId || state.emails.length === 0}
+              disabled={isValidating || !apiKey || state.emails.length === 0}
               className={`
-                w-full px-6 py-3 rounded-lg font-semibold text-white
-                transition-all duration-200 ease-in-out flex items-center justify-center
-                ${isValidating || !apiKey || !accountId || state.emails.length === 0
-                  ? 'bg-gray-400 cursor-not-allowed opacity-50'
-                  : 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl'
+                w-full py-4 rounded-xl font-semibold text-lg
+                transition-all duration-200 ease-in-out
+                flex items-center justify-center space-x-2
+                ${isValidating || !apiKey || state.emails.length === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl'
                 }
               `}
             >
               {isValidating ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg className="animate-spin h-5 w-5 text-current" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Validating...
+                  <span>Validating...</span>
                 </>
               ) : (
-                'Start Validation'
+                <>
+                  <span>Start Validation</span>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </>
               )}
             </button>
           </div>
 
-          {/* Progress and Results Panel */}
+          {/* Right Panel - Progress & Results */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Progress Section */}
             {(isValidating || logs.length > 0) && (
               <ValidationProgress
                 totalEmails={state.emails.length}
@@ -180,41 +154,11 @@ export default function Home() {
                 isValidating={isValidating}
               />
             )}
-
-            {/* Results Summary */}
-            {state.validatedEmails.length > 0 && !isValidating && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-6">Validation Summary</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="text-sm text-gray-500">Total Processed</div>
-                    <div className="text-3xl font-bold text-gray-900">{state.validatedEmails.length}</div>
-                  </div>
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <div className="text-sm text-green-600">Valid Emails</div>
-                    <div className="text-3xl font-bold text-green-600">
-                      {validationStats.totalValid}
-                    </div>
-                  </div>
-                  <div className="bg-red-50 rounded-lg p-4">
-                    <div className="text-sm text-red-600">Invalid Emails</div>
-                    <div className="text-3xl font-bold text-red-600">
-                      {validationStats.totalInvalid}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6">
-                  <div className="text-sm text-gray-500 mb-2">Processing Time</div>
-                  <div className="text-lg font-semibold text-gray-700">
-                    {validationStats.avgProcessingTime.toFixed(2)} seconds
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default IndexPage;

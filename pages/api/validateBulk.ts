@@ -1,77 +1,84 @@
 // pages/api/validateBulk.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
+import FormData from 'form-data';
 
 const MAILGUN_API_BASE = 'https://api.mailgun.net/v4/address/validate/bulk';
-const CHUNK_SIZE = 250;
 
-// Helper function to validate Mailgun API key format
-function isValidMailgunApiKey(apiKey: string): boolean {
-  // Mailgun private API keys are 48 characters long hexadecimal strings
-  // with two dashes splitting it into three parts
-  const parts = apiKey.split('-');
-  return parts.length === 3 && apiKey.length >= 40;
+interface ValidationJob {
+  id: string;
+  message?: string;
+  status?: string;
+  summary?: {
+    result: {
+      deliverable: number;
+      do_not_send: number;
+      undeliverable: number;
+      catch_all: number;
+      unknown: number;
+    };
+    risk: {
+      high: number;
+      low: number;
+      medium: number;
+      unknown: number;
+    };
+  };
 }
 
-// Helper function to create a bulk validation job
 async function createBulkValidation(
-  emails: string[],
+  file: Buffer,
   apiKey: string,
-  accountId: string
-) {
+  listName: string
+): Promise<ValidationJob> {
   try {
-    const response = await axios({
-      method: 'post',
-      url: MAILGUN_API_BASE,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Mailgun-Account-Id': accountId,
-        'Authorization': `Basic ${Buffer.from(`api:${apiKey}`).toString('base64')}`
-      },
-      data: {
-        addresses: emails
-      }
+    const formData = new FormData();
+    formData.append('file', file, {
+      filename: 'email_list.csv',
+      contentType: 'text/csv',
     });
-    
-    console.log('Bulk validation job created:', response.data);
-    return response.data.id;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      if (error.response?.status === 401) {
-        throw new Error('Invalid API key or unauthorized access');
+
+    const response = await axios.post(
+      `${MAILGUN_API_BASE}/${listName}`,
+      formData,
+      {
+        auth: {
+          username: 'api',
+          password: apiKey
+        },
+        headers: {
+          ...formData.getHeaders(),
+        }
       }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Create validation error:', error);
+    if (axios.isAxiosError(error)) {
       throw new Error(`API Error: ${error.response?.data?.message || error.message}`);
     }
     throw error;
   }
 }
 
-// Helper function to check job status
 async function checkJobStatus(
-  listId: string,
-  apiKey: string,
-  accountId: string
-) {
+  listName: string,
+  apiKey: string
+): Promise<ValidationJob> {
   try {
-    const response = await axios({
-      method: 'get',
-      url: `${MAILGUN_API_BASE}/${listId}`,
-      headers: {
-        'X-Mailgun-Account-Id': accountId,
-        'Authorization': `Basic ${Buffer.from(`api:${apiKey}`).toString('base64')}`
+    const response = await axios.get(
+      `${MAILGUN_API_BASE}/${listName}`,
+      {
+        auth: {
+          username: 'api',
+          password: apiKey
+        }
       }
-    });
-    
-    console.log('Job status:', response.data);
+    );
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      if (error.response?.status === 401) {
-        throw new Error('Invalid API key or unauthorized access');
-      }
-      if (error.response?.status === 404) {
-        throw new Error('Validation job not found');
-      }
       throw new Error(`API Error: ${error.response?.data?.message || error.message}`);
     }
     throw error;
@@ -87,76 +94,61 @@ export default async function handler(
   }
 
   try {
-    const { emails, apiKey, accountId } = req.body;
+    const { emails, apiKey } = req.body;
 
-    // Validate inputs
-    if (!emails?.length) {
-      return res.status(400).json({ 
-        error: 'No emails provided',
-        details: 'Please upload a CSV file with email addresses'
-      });
-    }
-    if (!apiKey) {
-      return res.status(400).json({ 
-        error: 'API key is required',
-        details: 'Please provide your Mailgun API key'
-      });
-    }
-    if (!isValidMailgunApiKey(apiKey)) {
-      return res.status(400).json({ 
-        error: 'Invalid API key format',
-        details: 'Please provide a valid Mailgun private API key'
-      });
-    }
-    if (!accountId) {
-      return res.status(400).json({ 
-        error: 'Account ID is required',
-        details: 'Please provide your Mailgun Account ID'
+    if (!emails?.length || !apiKey) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: !emails?.length ? 'No emails provided' : 'No API key provided'
       });
     }
 
-    // Create the bulk validation job
-    const listId = await createBulkValidation(emails, apiKey, accountId);
+    // Create CSV content
+    const csvContent = 'email\n' + emails.join('\n');
+    const buffer = Buffer.from(csvContent, 'utf-8');
+
+    // Generate a unique list name
+    const timestamp = Date.now();
+    const listName = `validation_${timestamp}`;
+
+    // Create validation job
+    console.log('Creating validation job...');
+    const job = await createBulkValidation(buffer, apiKey, listName);
+
+    if (!job.id) {
+      throw new Error('Failed to create validation job');
+    }
 
     // Poll for results
     let attempts = 0;
-    const maxAttempts = 30; // 5 minutes with 10s intervals
-    let lastStatus = null;
+    const maxAttempts = 30;
 
     while (attempts < maxAttempts) {
-      const status = await checkJobStatus(listId, apiKey, accountId);
-      lastStatus = status;
-      
-      if (status.status === 'completed') {
+      const status = await checkJobStatus(job.id, apiKey);
+      console.log('Job status:', status);
+
+      if (status.status === 'uploaded' || status.status === 'completed') {
         return res.status(200).json({
           success: true,
-          results: status.records || [],
-          totalProcessed: status.records_processed,
-          id: status.id,
-          summary: status.summary
+          job: status
         });
       }
-      
+
       if (status.status === 'failed') {
-        throw new Error(status.reason || 'Validation failed');
+        throw new Error('Validation job failed');
       }
-      
-      // Wait 10 seconds before next check
+
       await new Promise(resolve => setTimeout(resolve, 10000));
       attempts++;
     }
 
-    // If we reach here, we timed out
-    throw new Error(`Validation timed out after 5 minutes. Last status: ${JSON.stringify(lastStatus)}`);
+    throw new Error('Validation timed out');
 
   } catch (error) {
     console.error('Validation error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorResponse = {
+    return res.status(500).json({
       error: 'Validation failed',
-      details: errorMessage
-    };
-    
-    return res.status(500).json(errorResponse);
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 }
