@@ -2,7 +2,7 @@
 import { SESClient, GetIdentityVerificationAttributesCommand, ListIdentitiesCommand } from "@aws-sdk/client-ses";
 import type { SESValidationResult } from './types';
 
-class HybridValidator {
+export class HybridValidator {
   private sesClient: SESClient;
 
   constructor(credentials: { accessKeyId: string; secretAccessKey: string; region: string }) {
@@ -149,3 +149,12 @@ class HybridValidator {
     }
   }
 }
+
+// Export a factory function to create validator instances
+export const createHybridValidator = (credentials: { 
+  accessKeyId: string; 
+  secretAccessKey: string; 
+  region: string; 
+}) => {
+  return new HybridValidator(credentials);
+};

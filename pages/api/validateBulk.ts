@@ -1,6 +1,6 @@
 // pages/api/validateBulk.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { HybridValidator } from '../../utils/hybridValidator';
+import { createHybridValidator } from '../../utils/hybridValidator';
 import type { BulkValidationResult } from '../../utils/types';
 
 export const config = {
@@ -31,8 +31,8 @@ export default async function handler(
       return res.status(400).json({ error: 'AWS credentials are required' });
     }
 
-    // Initialize validator with credentials
-    const validator = new HybridValidator(credentials);
+    // Create validator instance
+    const validator = createHybridValidator(credentials);
 
     // Validate emails
     const validationResults = await validator.validateBulk(emails);
