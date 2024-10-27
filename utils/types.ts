@@ -1,10 +1,4 @@
 // utils/types.ts
-export interface EmailValidationError {
-  code: string;
-  message: string;
-  timestamp: string;
-}
-
 export interface DKIMAttributes {
   tokens?: string[];
   status: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
@@ -14,7 +8,7 @@ export interface DKIMAttributes {
 export interface VerificationAttributes {
   verificationToken?: string;
   verificationStatus: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
-  dkimAttributes?: DKIMAttributes;
+  dkimAttributes?: DKIMAttributes;  // Changed from dkim_attributes to dkimAttributes
 }
 
 export interface DomainStatus {
@@ -55,14 +49,8 @@ export interface ValidationStatistics {
   };
 }
 
-export interface BounceRateMetrics {
-  predictedRate: number;
-  confidence: number;
-  factors: {
-    domainReputation: number;
-    listQuality: number;
-    authenticationStatus: number;
-    historicalPerformance: number;
-  };
-  recommendations: string[];
+export interface EmailValidationError {
+  code: string;
+  message: string;
+  timestamp: string;
 }
