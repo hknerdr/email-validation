@@ -1,7 +1,7 @@
 // pages/api/validateBulk.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createHybridValidator } from '../../utils/hybridValidator';
-import type { BulkValidationResult } from '../../utils/types';
+import type { BulkValidationResult, ValidationStatistics } from '../../utils/types';
 
 export const config = {
   api: {
@@ -38,24 +38,28 @@ export default async function handler(
     const validationResults = await validator.validateBulk(emails);
 
     // Calculate statistics
-    const stats = {
+    const stats: ValidationStatistics = {
       total: validationResults.totalProcessed,
       verified: validationResults.successful,
       failed: validationResults.failed,
+      pending: 0, // Add pending status if needed
       domains: {
         total: new Set(validationResults.results.map(r => r.email.split('@')[1])).size,
-        verified: new Set(validationResults.results.filter(r => r.details.domain_status.verified)
-                        .map(r => r.email.split('@')[1])).size
+        verified: new Set(validationResults.results
+          .filter(r => r.details.domain_status.verified)
+          .map(r => r.email.split('@')[1])).size
       },
       dkim: {
         enabled: validationResults.results.filter(r => r.details.domain_status.has_dkim).length
       }
     };
 
-    return res.status(200).json({
+    const response: BulkValidationResult = {
       results: validationResults.results,
       stats
-    });
+    };
+
+    return res.status(200).json(response);
 
   } catch (error) {
     console.error('Validation error:', error);

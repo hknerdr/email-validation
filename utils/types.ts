@@ -8,7 +8,7 @@ export interface DKIMAttributes {
 export interface VerificationAttributes {
   verificationToken?: string;
   verificationStatus: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
-  dkimAttributes?: DKIMAttributes;  // Changed from dkim_attributes to dkimAttributes
+  dkimAttributes?: DKIMAttributes;
 }
 
 export interface DomainStatus {
@@ -47,6 +47,11 @@ export interface ValidationStatistics {
     predictedBounceRate: number;
     recommendations: string[];
   };
+}
+
+export interface BulkValidationResult {
+  results: SESValidationResult[];
+  stats: ValidationStatistics;
 }
 
 export interface EmailValidationError {
