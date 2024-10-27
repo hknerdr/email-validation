@@ -26,5 +26,12 @@
     "build": "next build",
     "start": "next start",
     "validate": "ts-node scripts/validate-emails.ts"
+  },
+  "config": {
+    "aws": {
+      "region": "us-east-1",
+      "accessKeyId": "YOUR_ACCESS_KEY_ID",
+      "secretAccessKey": "YOUR_SECRET_ACCESS_KEY"
+    }
   }
 }
