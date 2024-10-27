@@ -39,7 +39,8 @@ const AWSCredentialsForm: React.FC<Props> = ({ onCredentialsVerified }) => {
       }
 
       // Save credentials to localStorage if "remember me" is checked
-      if (document.getElementById('remember-credentials')?.checked) {
+      const rememberCheckbox = document.getElementById('remember-credentials') as HTMLInputElement;
+      if (rememberCheckbox?.checked) {
         localStorage.setItem('aws_access_key_id', credentials.accessKeyId);
         localStorage.setItem('aws_secret_access_key', credentials.secretAccessKey);
         localStorage.setItem('aws_region', credentials.region);
@@ -153,11 +154,11 @@ const AWSCredentialsForm: React.FC<Props> = ({ onCredentialsVerified }) => {
 
         <button
           onClick={handleVerify}
-          disabled={isVerifying}
+          disabled={isVerifying || !credentials.accessKeyId || !credentials.secretAccessKey}
           className={`
             w-full py-2 px-4 rounded-lg font-medium text-white
             transition-colors duration-200
-            ${isVerifying
+            ${isVerifying || !credentials.accessKeyId || !credentials.secretAccessKey
               ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-blue-600 hover:bg-blue-700'
             }
