@@ -1,15 +1,12 @@
 // pages/api/ses-credentials.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { SESClient, GetAccountSendingCommand } from "@aws-sdk/client-ses";
+import { SESClient, GetAccountSendingEnabledCommand } from "@aws-sdk/client-ses";
 
 interface CredentialsResponse {
   success: boolean;
   message?: string;
   error?: string;
   details?: {
-    max24HourSend?: number;
-    maxSendRate?: number;
-    sentLast24Hours?: number;
     sendingEnabled?: boolean;
   };
 }
@@ -45,7 +42,7 @@ export default async function handler(
     });
 
     // Try to get account sending status to verify credentials
-    const command = new GetAccountSendingCommand({});
+    const command = new GetAccountSendingEnabledCommand({});
     const response = await sesClient.send(command);
 
     // If we get here, credentials are valid
@@ -53,10 +50,7 @@ export default async function handler(
       success: true,
       message: 'Credentials verified successfully',
       details: {
-        max24HourSend: response.Max24HourSend,
-        maxSendRate: response.MaxSendRate,
-        sentLast24Hours: response.SentLast24Hours,
-        sendingEnabled: response.SendingEnabled
+        sendingEnabled: response.Enabled
       }
     });
 
@@ -91,7 +85,5 @@ export default async function handler(
       error: 'Failed to verify credentials',
       message: error instanceof Error ? error.message : 'Unknown error occurred'
     });
-  } finally {
-    // Clean up resources if needed
   }
 }

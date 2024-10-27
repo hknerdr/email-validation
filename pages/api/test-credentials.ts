@@ -1,6 +1,6 @@
 // pages/api/test-credentials.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { SESClient, GetAccountSendingCommand } from "@aws-sdk/client-ses";
+import { SESClient, GetAccountSendingEnabledCommand } from "@aws-sdk/client-ses";
 
 export default async function handler(
   req: NextApiRequest,
@@ -25,13 +25,14 @@ export default async function handler(
       }
     });
 
-    // Simple test to verify credentials by getting account status
-    const command = new GetAccountSendingCommand({});
-    await sesClient.send(command);
+    // Verify credentials by checking account sending status
+    const command = new GetAccountSendingEnabledCommand({});
+    const response = await sesClient.send(command);
 
     return res.status(200).json({
       success: true,
-      message: 'Credentials verified successfully'
+      message: 'Credentials verified successfully',
+      sendingEnabled: response.Enabled
     });
 
   } catch (error) {
