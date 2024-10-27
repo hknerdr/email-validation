@@ -45,7 +45,6 @@ export default async function handler(
     const command = new GetAccountSendingEnabledCommand({});
     const response = await sesClient.send(command);
 
-    // If we get here, credentials are valid
     return res.status(200).json({
       success: true,
       message: 'Credentials verified successfully',
@@ -55,35 +54,35 @@ export default async function handler(
     });
 
   } catch (error) {
-    console.error('SES Credentials verification error:', error);
-
-    // Handle specific AWS errors
+    // More specific error handling
     if (error instanceof Error) {
-      if (error.name === 'InvalidClientTokenId') {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid Access Key ID'
-        });
-      }
-      if (error.name === 'SignatureDoesNotMatch') {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid Secret Access Key'
-        });
-      }
-      if (error.name === 'UnrecognizedClientException') {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid credentials'
-        });
+      switch (error.name) {
+        case 'InvalidClientTokenId':
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid Access Key ID'
+          });
+        case 'SignatureDoesNotMatch':
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid Secret Access Key'
+          });
+        case 'UnrecognizedClientException':
+          return res.status(401).json({
+            success: false,
+            error: 'Invalid credentials'
+          });
+        default:
+          return res.status(401).json({
+            success: false,
+            error: `AWS Error: ${error.message}`
+          });
       }
     }
 
-    // Generic error response
-    return res.status(401).json({
+    return res.status(500).json({
       success: false,
-      error: 'Failed to verify credentials',
-      message: error instanceof Error ? error.message : 'Unknown error occurred'
+      error: 'An unexpected error occurred'
     });
   }
 }

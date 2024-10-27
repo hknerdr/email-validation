@@ -2,13 +2,15 @@
 import React, { useState, useCallback } from 'react';
 import { useCredentials } from '../context/CredentialsContext';
 import AWSCredentialsForm from '../components/AWSCredentialsForm';
-import { ValidationResults } from '../components/ValidationResults';
+import ValidationResults from '../components/ValidationResults'; // Changed to match your file
 import { DomainVerificationStatus } from '../components/DomainVerificationStatus';
 import { DeliverabilityMetrics } from '../components/DeliverabilityMetrics';
 import { DKIMStatusDisplay } from '../components/DKIMStatusDisplay';
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
 import { bouncePredictor } from '../utils/bounceRatePredictor';
 import type { SESValidationResult, ValidationStatistics } from '../utils/types';
+import LoadingState from '../components/LoadingState';
+import FileUpload from '../components/FileUpload';
 
 export default function Home() {
   const { credentials, isVerified } = useCredentials();
@@ -32,22 +34,6 @@ export default function Home() {
       timestamp: new Date().toLocaleTimeString()
     }]);
   }, []);
-
-  const handleFileUpload = useCallback(async (file: File) => {
-    try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/);
-      const emailList = lines
-        .map(line => line.trim())
-        .filter(line => line && line.includes('@'));
-
-      setEmails(emailList);
-      addLog(`Successfully loaded ${emailList.length} emails`, 'success');
-    } catch (error) {
-      setError('Error reading file');
-      addLog('Failed to read file', 'error');
-    }
-  }, [addLog]);
 
   const handleValidation = async () => {
     if (!credentials || !emails.length) return;
@@ -125,7 +111,7 @@ export default function Home() {
               {/* File Upload */}
               <div className="bg-white rounded-xl shadow-sm p-6">
                 <h2 className="text-lg font-semibold mb-4">Upload Email List</h2>
-                {/* Your existing file upload component */}
+                <FileUpload />
               </div>
 
               {/* Validation Button */}
@@ -134,7 +120,7 @@ export default function Home() {
                 disabled={isValidating || !emails.length}
                 className={`w-full ${
                   isValidating || !emails.length
-                    ? 'bg-gray-300'
+                    ? 'bg-gray-300 cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700'
                 } text-white py-3 rounded-xl font-medium transition-colors`}
               >
@@ -144,6 +130,7 @@ export default function Home() {
 
             {/* Right Panel - Results */}
             <div className="lg:col-span-2 space-y-6">
+              {isValidating && <LoadingState />}
               {validationResults && (
                 <>
                   <ValidationResults 
@@ -163,6 +150,11 @@ export default function Home() {
                     totalEmails={validationResults.stats.total}
                   />
                 </>
+              )}
+              {error && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-4">
+                  <p className="text-red-700">{error}</p>
+                </div>
               )}
             </div>
           </div>
