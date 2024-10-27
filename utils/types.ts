@@ -1,44 +1,68 @@
 // utils/types.ts
-export interface ValidationResult {
-  email: string;
-  is_valid: boolean;
-  reason?: string;
-  risk: 'high' | 'medium' | 'low' | 'none';
-  details: {
-    syntax: {
-      is_valid: boolean;
-      has_valid_format: boolean;
-      has_valid_length: boolean;
-    };
-    domain: {
-      has_mx_records: boolean;
-      has_valid_syntax: boolean;
-      is_disposable_domain: boolean;
-      is_role_account: boolean;
-    };
-    smtp?: {
-      connection_success: boolean;
-      recipient_accepted: boolean;
-      is_catch_all: boolean;
-      response_code?: number;
-      response_message?: string;
-    };
-  };
-  suggestions?: string[];
+export interface EmailValidationError {
+  code: string;
+  message: string;
+  timestamp: string;
 }
 
-export interface BulkValidationResult {
-  results: ValidationResult[];
-  stats: {
-    total: number;
-    valid: number;
-    invalid: number;
-    risk_levels: {
-      high: number;
-      medium: number;
-      low: number;
-      none: number;
-    };
-    errors: string[];
+export interface DKIMAttributes {
+  tokens?: string[];
+  status: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
+  dkimTokens?: string[];
+}
+
+export interface VerificationAttributes {
+  verificationToken?: string;
+  verificationStatus: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
+  dkimAttributes?: DKIMAttributes;
+}
+
+export interface DomainStatus {
+  verified: boolean;
+  has_mx_records?: boolean;
+  has_dkim?: boolean;
+  has_spf?: boolean;
+  dmarc_status?: 'pass' | 'fail' | 'none';
+}
+
+export interface SESValidationResult {
+  email: string;
+  is_valid: boolean;
+  verification_status?: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
+  reason?: string;
+  details: {
+    domain_status: DomainStatus;
+    verification_attributes?: VerificationAttributes;
   };
+}
+
+export interface ValidationStatistics {
+  total: number;
+  verified: number;
+  failed: number;
+  pending: number;
+  domains: {
+    total: number;
+    verified: number;
+  };
+  dkim: {
+    enabled: number;
+  };
+  deliverability?: {
+    score: number;
+    predictedBounceRate: number;
+    recommendations: string[];
+  };
+}
+
+export interface BounceRateMetrics {
+  predictedRate: number;
+  confidence: number;
+  factors: {
+    domainReputation: number;
+    listQuality: number;
+    authenticationStatus: number;
+    historicalPerformance: number;
+  };
+  recommendations: string[];
 }
