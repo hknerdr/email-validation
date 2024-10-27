@@ -1,6 +1,6 @@
 // pages/api/validateBulk.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { hybridValidator } from '../../utils/hybridValidator';
+import { HybridValidator } from '../../utils/hybridValidator';
 import type { BulkValidationResult } from '../../utils/types';
 
 export const config = {
@@ -21,40 +21,39 @@ export default async function handler(
   }
 
   try {
-    const { emails } = req.body;
+    const { emails, credentials } = req.body;
 
-    if (!Array.isArray(emails) || emails.length === 0) {
+    if (!emails?.length) {
       return res.status(400).json({ error: 'No emails provided' });
     }
 
-    if (emails.length > 5000) {
-      return res.status(400).json({ error: 'Maximum 5000 emails allowed per request' });
+    if (!credentials?.accessKeyId || !credentials?.secretAccessKey) {
+      return res.status(400).json({ error: 'AWS credentials are required' });
     }
 
-    // Validate emails using hybrid validator
-    const results = await hybridValidator.validateBulk(emails, {
-      useSmtp: true, // Enable SMTP validation
-      cacheDuration: 24 * 60 * 60 * 1000 // 24 hours cache
-    });
+    // Initialize validator with credentials
+    const validator = new HybridValidator(credentials);
+
+    // Validate emails
+    const validationResults = await validator.validateBulk(emails);
 
     // Calculate statistics
     const stats = {
-      total: results.length,
-      valid: results.filter(r => r.is_valid).length,
-      invalid: results.filter(r => !r.is_valid).length,
-      risk_levels: {
-        high: results.filter(r => r.risk === 'high').length,
-        medium: results.filter(r => r.risk === 'medium').length,
-        low: results.filter(r => r.risk === 'low').length,
-        none: results.filter(r => r.risk === 'none').length
+      total: validationResults.totalProcessed,
+      verified: validationResults.successful,
+      failed: validationResults.failed,
+      domains: {
+        total: new Set(validationResults.results.map(r => r.email.split('@')[1])).size,
+        verified: new Set(validationResults.results.filter(r => r.details.domain_status.verified)
+                        .map(r => r.email.split('@')[1])).size
       },
-      errors: results
-        .filter(r => !r.is_valid && r.reason)
-        .map(r => `${r.email}: ${r.reason}`)
+      dkim: {
+        enabled: validationResults.results.filter(r => r.details.domain_status.has_dkim).length
+      }
     };
 
     return res.status(200).json({
-      results,
+      results: validationResults.results,
       stats
     });
 
