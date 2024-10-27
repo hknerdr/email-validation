@@ -1,6 +1,6 @@
 // components/ValidationProgress.tsx
 import React from 'react';
-import { AlertTriangle, Check, Info, RefreshCcw } from 'lucide-react';
+import { Icons } from '../utils/icons';
 
 interface Log {
   message: string;
@@ -23,18 +23,18 @@ const ValidationProgress: React.FC<ValidationProgressProps> = ({
   logs,
   isValidating
 }) => {
-  const progress = (processedEmails / totalEmails) * 100;
+  const progress = Math.min((processedEmails / totalEmails) * 100, 100);
 
   const getLogIcon = (type: string) => {
     switch (type) {
       case 'success':
-        return <Check className="w-4 h-4 text-green-500" />;
+        return <Icons.Check className="text-green-500" />;
       case 'error':
-        return <AlertTriangle className="w-4 h-4 text-red-500" />;
+        return <Icons.Alert className="text-red-500" />;
       case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+        return <Icons.Alert className="text-yellow-500" />;
       default:
-        return <Info className="w-4 h-4 text-blue-500" />;
+        return <Icons.Info className="text-blue-500" />;
     }
   };
 
@@ -59,14 +59,16 @@ const ValidationProgress: React.FC<ValidationProgressProps> = ({
           <h3 className="text-lg font-semibold text-gray-800">Validation Progress</h3>
           <span className="text-lg font-bold text-gray-900">{Math.round(progress)}%</span>
         </div>
+        
         <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
           <div
             className="h-full rounded-full bg-gradient-to-r from-green-400 to-green-500 transition-all duration-500 ease-out relative"
             style={{ width: `${progress}%` }}
           >
-            <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]"></div>
+            <div className="absolute inset-0 bg-white/20"></div>
           </div>
         </div>
+
         <div className="mt-3 text-sm text-gray-600">
           {processedEmails} of {totalEmails} emails processed
         </div>
@@ -82,6 +84,7 @@ const ValidationProgress: React.FC<ValidationProgressProps> = ({
           </div>
           <span className="text-gray-400 text-sm">Validation Log</span>
         </div>
+        
         <div className="p-4">
           <div className="max-h-80 overflow-y-auto space-y-2 font-mono text-sm">
             {logs.map((log, index) => (
@@ -96,7 +99,7 @@ const ValidationProgress: React.FC<ValidationProgressProps> = ({
             ))}
             {isValidating && (
               <div className="flex items-center space-x-2 p-2 text-blue-500">
-                <RefreshCcw className="w-4 h-4 animate-spin" />
+                <Icons.Spinner />
                 <span>Processing...</span>
               </div>
             )}
@@ -108,7 +111,7 @@ const ValidationProgress: React.FC<ValidationProgressProps> = ({
       {errors.length > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
           <div className="flex items-center mb-2">
-            <AlertTriangle className="w-5 h-5 text-red-500 mr-2" />
+            <Icons.Alert className="w-5 h-5 text-red-500 mr-2" />
             <h4 className="text-red-800 font-semibold">Validation Errors</h4>
           </div>
           <div className="space-y-1">
