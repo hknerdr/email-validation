@@ -2,7 +2,7 @@
 import { SESClient, GetIdentityVerificationAttributesCommand, ListIdentitiesCommand } from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
-import type { SESValidationResult, BulkValidationResult } from './types';
+import type { SESValidationResult, BulkValidationResult, ValidationStatistics, VerificationAttributes } from './types';
 import dns from 'dns/promises';
 
 export class HybridValidator {
@@ -16,6 +16,28 @@ export class HybridValidator {
         secretAccessKey: credentials.secretAccessKey
       }
     });
+  }
+
+  private async getDomainVerificationStatus(domain: string): Promise<VerificationAttributes | null> {
+    try {
+      const command = new GetIdentityVerificationAttributesCommand({
+        Identities: [domain]
+      });
+      
+      const response = await this.sesClient.send(command);
+      
+      if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
+        return {
+          verificationStatus: response.VerificationAttributes[domain].VerificationStatus,
+          dkimAttributes: response.VerificationAttributes[domain].DkimAttributes
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting domain verification status:', error);
+      return null;
+    }
   }
 
   private async checkDNSRecords(domain: string): Promise<{
@@ -117,9 +139,9 @@ export class HybridValidator {
       reason: !isValid ? this.determineFailureReason(smtpResult, dnsResults) : undefined,
       details: {
         domain_status: {
-          verified: sesVerification?.VerificationStatus === 'Success',
+          verified: sesVerification?.verificationStatus === 'Success',
           has_mx_records: dnsResults.hasMX,
-          has_dkim: sesVerification?.DkimAttributes?.Status === 'Success',
+          has_dkim: sesVerification?.dkimAttributes?.status === 'Success',
           has_spf: dnsResults.hasSPF,
           dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
         }
@@ -195,8 +217,6 @@ export class HybridValidator {
       }
     };
   }
-
-  // ... (keep existing getDomainVerificationStatus and listVerifiedDomains methods)
 }
 
 export const createHybridValidator = (credentials: { 
