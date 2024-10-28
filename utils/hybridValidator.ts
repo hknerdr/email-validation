@@ -216,7 +216,7 @@ export class HybridValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
-    const limit = pLimit(10); // Limit to 10 concurrent validations
+    const limit = pLimit(5); // Reduced concurrency
     const allResults: SESValidationResult[] = [];
     const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
 

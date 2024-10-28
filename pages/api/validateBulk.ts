@@ -3,6 +3,14 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createHybridValidator } from '../../utils/hybridValidator';
 
+interface ValidationResponse {
+  results: any[];
+  stats: any;
+  totalProcessed: number;
+  successful: number;
+  failed: number;
+}
+
 export const config = {
   api: {
     bodyParser: {
@@ -15,7 +23,7 @@ export const config = {
 
 export default async function validateBulk(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse<ValidationResponse | { error: string; details?: string }>
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -24,10 +32,18 @@ export default async function validateBulk(
   try {
     const { emails, credentials } = req.body;
 
+    const MAX_EMAILS = 500; // Define maximum emails per request
+
     if (!emails?.length || !credentials?.accessKeyId || !credentials?.secretAccessKey) {
       return res.status(400).json({ 
         error: 'Missing required fields',
         details: !emails?.length ? 'No emails provided' : 'Invalid AWS credentials'
+      });
+    }
+
+    if (emails.length > MAX_EMAILS) {
+      return res.status(400).json({
+        error: `Too many emails. Maximum allowed is ${MAX_EMAILS}.`,
       });
     }
 
@@ -49,7 +65,7 @@ export default async function validateBulk(
 
   } catch (error) {
     console.error('Validation failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
     return res.status(500).json({ 
       error: 'Validation failed', 
       details: errorMessage 

@@ -3,6 +3,7 @@
 import { createConnection } from 'net';
 import dns from 'dns/promises';
 import pLimit from 'p-limit';
+import { Cache } from './cache';
 
 interface SMTPValidationResult {
   email: string;
@@ -19,6 +20,15 @@ interface SMTPValidationResult {
 }
 
 class SMTPValidator {
+  private smtpCache: Cache<boolean>; // Cache for SMTP validation results
+
+  constructor() {
+    this.smtpCache = new Cache<boolean>({
+      ttl: 12 * 60 * 60 * 1000, // 12 hours
+      maxSize: 5000
+    });
+  }
+
   private async getMxRecords(domain: string): Promise<string[]> {
     try {
       const records = await dns.resolveMx(domain);
@@ -83,6 +93,15 @@ class SMTPValidator {
     };
 
     try {
+      // Check if SMTP validation for this domain is cached
+      if (this.smtpCache.get(domain)) {
+        result.is_valid = true;
+        result.has_mx_records = true;
+        result.details.connection_success = true;
+        result.details.recipient_accepted = true;
+        return result;
+      }
+
       // 1. Get MX records
       const mxRecords = await this.getMxRecords(domain);
       result.has_mx_records = mxRecords.length > 0;
@@ -165,6 +184,11 @@ class SMTPValidator {
         // If catch-all is implemented:
         // result.is_valid = result.details.recipient_accepted && !result.is_catch_all;
 
+        // Cache successful SMTP validation for this domain
+        if (result.is_valid) {
+          this.smtpCache.set(domain, true);
+        }
+
       } finally {
         // Clean up
         try {
@@ -183,7 +207,7 @@ class SMTPValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<SMTPValidationResult[]> {
-    const limit = pLimit(5); // Limit to 5 concurrent SMTP validations
+    const limit = pLimit(2); // Reduced concurrency
     const results: SMTPValidationResult[] = [];
 
     const validationPromises = emails.map(email =>
