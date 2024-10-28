@@ -226,8 +226,6 @@ export class HybridValidator {
   }
 }
 
-export const createHybridValidator = (credentials?: { accessKeyId: string; secretAccessKey: string; region: string }) => {
-  // If credentials are provided, initialize SESClient; otherwise, proceed without it
-  // Since we've removed SES verification, credentials are no longer needed
-  return new HybridValidator();
+export const createHybridValidator = (credentials: { accessKeyId: string; secretAccessKey: string; region: string }) => {
+  return new HybridValidator(credentials);
 };
