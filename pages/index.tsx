@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
-import AWSCredentialsForm from '../components/AWSCredentialsForm';
 import EmailValidationResults from '../components/EmailValidationResults';
 import { batchEmails } from '../utils/batchEmails'; // Import batching utility
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
@@ -24,8 +23,6 @@ interface ErrorResponse {
 }
 
 export default function Home() {
-  // Remove credentials state as it's no longer needed
-  // const { credentials, isVerified, setCredentials } = useCredentials();
   const [emails, setEmails] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<{
@@ -47,24 +44,6 @@ export default function Home() {
       timestamp: new Date().toLocaleTimeString()
     }]);
   }, []);
-
-  // Remove credentials submission logic as it's no longer needed
-  /*
-  const handleCredentialsSubmit = useCallback(async (creds: {
-    accessKeyId: string;
-    secretAccessKey: string;
-    region: string;
-  }) => {
-    try {
-      await setCredentials(creds);
-      addLog('AWS credentials verified successfully', 'success');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to verify credentials';
-      setError(errorMessage);
-      addLog('Failed to verify AWS credentials', 'error');
-    }
-  }, [setCredentials, addLog]);
-  */
 
   const handleValidation = async () => {
     setIsValidating(true);
