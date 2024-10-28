@@ -9,6 +9,7 @@ import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 import { useCredentials } from '../context/CredentialsContext';
+import { bouncePredictor } from '../utils/bounceRatePredictor';
 
 interface ValidationResponse {
   results: SESValidationResult[];
@@ -63,7 +64,7 @@ export default function Home() {
     const emailBatches = batchEmails(emails, BATCH_SIZE);
     const totalBatches = emailBatches.length;
     let allResults: SESValidationResult[] = [];
-    let aggregatedStats: ValidationStatistics = {
+    const aggregatedStats: ValidationStatistics = { // Changed to const
       total: 0,
       verified: 0,
       failed: 0,
