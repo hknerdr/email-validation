@@ -1,8 +1,10 @@
+// pages/index.tsx
+
 import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import { useCredentials } from '../context/CredentialsContext';
 import AWSCredentialsForm from '../components/AWSCredentialsForm';
-import ValidationResults from '../components/ValidationResults';
+import EmailValidationResults from '../components/EmailValidationResults';
 import { DeliverabilityMetrics } from '../components/DeliverabilityMetrics';
 import { DKIMStatusDisplay } from '../components/DKIMStatusDisplay';
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
@@ -173,8 +175,37 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* Log Display Section */}
+          {logs.length > 0 && (
+            <div className="mt-8 bg-gray-100 p-4 rounded-lg">
+              <h2 className="text-xl font-semibold mb-4">Logs</h2>
+              <ul className="space-y-2">
+                {logs.map((log, index) => (
+                  <li key={index} className={`p-2 rounded ${getLogStyle(log.type)}`}>
+                    <span className="font-medium">{log.timestamp}:</span> {log.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </main>
       </div>
     </>
   );
+}
+
+// Helper function to determine log style based on type
+function getLogStyle(type: 'info' | 'success' | 'error' | 'warning') {
+  switch (type) {
+    case 'success':
+      return 'bg-green-100 text-green-800';
+    case 'error':
+      return 'bg-red-100 text-red-800';
+    case 'warning':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'info':
+    default:
+      return 'bg-blue-100 text-blue-800';
+  }
 }

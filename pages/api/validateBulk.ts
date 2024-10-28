@@ -1,7 +1,6 @@
 // pages/api/validateBulk.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createHybridValidator } from '../../utils/hybridValidator';
-import type { BulkValidationResult } from '../../utils/types';
 
 export const config = {
   api: {

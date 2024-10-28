@@ -1,6 +1,6 @@
 // components/EmailValidationResults.tsx
 import React from 'react';
-import { Line } from 'react-chartjs-2';
+// Removed unused 'Line' import
 import { DomainVerificationStatus } from './DomainVerificationStatus';
 import { DeliverabilityMetrics } from './DeliverabilityMetrics';
 import { DKIMStatusDisplay } from './DKIMStatusDisplay';
@@ -73,7 +73,7 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
             <DomainVerificationStatus
               key={domain}
               domain={domain}
-              results={results.filter(r => r.email.includes(domain))}
+              results={results.filter(r => r.email.endsWith(`@${domain}`))} // Improved domain matching
             />
           ))}
         </div>
@@ -99,19 +99,34 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Email
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   DKIM
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   MX Records
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Details
                 </th>
               </tr>
@@ -123,26 +138,31 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
                     {result.email}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      result.verification_status === 'Success' ? 'bg-green-100 text-green-800' :
-                      result.verification_status === 'Failed' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
+                    <span
+                      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        result.verification_status === 'Success'
+                          ? 'bg-green-100 text-green-800'
+                          : result.verification_status === 'Failed'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}
+                      aria-label={`Verification status: ${result.verification_status}`} // Accessibility improvement
+                    >
                       {result.verification_status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {result.details.domain_status.has_dkim ? (
-                      <span className="text-green-600">✓</span>
+                      <span className="text-green-600" aria-label="DKIM Enabled">✓</span>
                     ) : (
-                      <span className="text-red-600">✗</span>
+                      <span className="text-red-600" aria-label="DKIM Disabled">✗</span>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {result.details.domain_status.has_mx_records ? (
-                      <span className="text-green-600">✓</span>
+                      <span className="text-green-600" aria-label="MX Records Present">✓</span>
                     ) : (
-                      <span className="text-red-600">✗</span>
+                      <span className="text-red-600" aria-label="MX Records Missing">✗</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
