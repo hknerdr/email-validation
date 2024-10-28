@@ -15,7 +15,8 @@ import type {
 } from './types';
 import { Cache } from './cache';
 import pLimit from 'p-limit';
-import dns from 'dns/promises'; // Ensure DNS is imported
+import dns from 'dns/promises';
+import pRetry from 'p-retry'; // Install p-retry: npm install p-retry
 
 // Define a type for the allowed verification statuses
 type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;
@@ -36,7 +37,9 @@ export class HybridValidator {
       credentials: {
         accessKeyId: credentials.accessKeyId,
         secretAccessKey: credentials.secretAccessKey
-      }
+      },
+      maxAttempts: 5, // Increase retry attempts
+      retryStrategy: undefined // Use default retry strategy
     });
     this.domainVerificationCache = new Cache<VerificationAttributes>({
       ttl: 24 * 60 * 60 * 1000, // 24 hours
@@ -63,35 +66,49 @@ export class HybridValidator {
     }
 
     try {
-      const command = new GetIdentityVerificationAttributesCommand({
-        Identities: [domain]
+      // Implement retry logic with exponential backoff for throttling
+      const verificationAttributes = await pRetry(async () => {
+        const command = new GetIdentityVerificationAttributesCommand({
+          Identities: [domain]
+        });
+
+        const response = await this.sesClient.send(command);
+
+        if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
+          const domainAttrs = response.VerificationAttributes[domain];
+          const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
+
+          const dkimAttrs = (domainAttrs as any).DkimAttributes as DkimAttributes | undefined;
+
+          const verificationAttributes: VerificationAttributes = {
+            verificationStatus: status,
+            dkimAttributes: dkimAttrs ? {
+              status: this.mapVerificationStatus(dkimAttrs.DkimStatus),
+              tokens: dkimAttrs.DkimTokens || []
+            } : undefined
+          };
+
+          return verificationAttributes;
+        }
+
+        throw new Error('Domain verification attributes not found.');
+      }, {
+        retries: 5,
+        onFailedAttempt: error => {
+          console.warn(`Attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`, error);
+        },
+        factor: 2,
+        minTimeout: 1000,
+        maxTimeout: 8000,
+        randomize: true
       });
-      
-      const response = await this.sesClient.send(command);
-      
-      if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
-        const domainAttrs = response.VerificationAttributes[domain];
-        const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
 
-        const dkimAttrs = (domainAttrs as any).DkimAttributes as DkimAttributes | undefined;
+      // Cache the result
+      this.domainVerificationCache.set(domain, verificationAttributes);
 
-        const verificationAttributes: VerificationAttributes = {
-          verificationStatus: status,
-          dkimAttributes: dkimAttrs ? {
-            status: this.mapVerificationStatus(dkimAttrs.DkimStatus),
-            tokens: dkimAttrs.DkimTokens || []
-          } : undefined
-        };
-
-        // Cache the result
-        this.domainVerificationCache.set(domain, verificationAttributes);
-
-        return verificationAttributes;
-      }
-      
-      return null;
+      return verificationAttributes;
     } catch (error) {
-      console.error('Error getting domain verification status:', error);
+      console.error(`Error getting domain verification status for ${domain}:`, error);
       return null;
     }
   }
@@ -126,7 +143,8 @@ export class HybridValidator {
         hasSPF,
         hasDMARC
       };
-    } catch {
+    } catch (error) {
+      console.error(`DNS resolution failed for domain ${domain}:`, error);
       return { hasMX: false, hasSPF: false, hasDMARC: false };
     }
   }
@@ -180,7 +198,7 @@ export class HybridValidator {
 
     // Step 2: DNS checks
     const dnsResults = await this.checkDNSRecords(domain);
-    
+
     // Step 3: SMTP validation
     const smtpResult = await smtpValidator.validateEmail(email);
 
@@ -203,7 +221,7 @@ export class HybridValidator {
           has_spf: dnsResults.hasSPF,
           dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
         },
-        verification_attributes: sesVerification ?? undefined // Fixed line
+        verification_attributes: sesVerification ?? undefined
       }
     };
   }
@@ -216,13 +234,13 @@ export class HybridValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
-    const limit = pLimit(5); // Reduced concurrency
+    const limit = pLimit(2); // Further reduced concurrency to mitigate throttling
     const allResults: SESValidationResult[] = [];
     const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
 
-    // Pre-fetch domain verifications for all unique domains
+    // Pre-fetch domain verifications for all unique domains with retries
     const domainVerificationPromises = Array.from(uniqueDomains).map(domain => 
-      this.getDomainVerificationStatus(domain)
+      limit(() => this.getDomainVerificationStatus(domain))
     );
     await Promise.all(domainVerificationPromises);
 
