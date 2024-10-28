@@ -1,26 +1,39 @@
 // components/FileUpload.tsx
+
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { parseCSV } from '../utils/csvParser'; // Added import for parseCSV
+import { parseCSV } from '../utils/csvParser'; // Ensure this utility exists
 
 interface FileUploadProps {
   className?: string;
   onEmailsUploaded: (emails: string[]) => void;
+  maxEmailsPerBatch?: number; // Optional prop to display max limit
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploaded }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploaded, maxEmailsPerBatch = 500 }) => {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setUploadedFiles(acceptedFiles);
+    setError(null);
+
     try {
-      const emails = await parseCSV(acceptedFiles[0]); // Now parseCSV is imported
+      const emails = await parseCSV(acceptedFiles[0]);
+      
+      if (emails.length > maxEmailsPerBatch * 10) { // Assuming a maximum total of 5000 emails
+        setError(`Uploaded file contains ${emails.length} emails. Please ensure the total number does not exceed ${maxEmailsPerBatch * 10}.`);
+        onEmailsUploaded([]);
+        return;
+      }
+
       onEmailsUploaded(emails);
     } catch (error) {
       console.error('Error parsing CSV:', error);
-      // Optionally, handle parsing errors (e.g., display a user-friendly message)
+      setError('Failed to parse the uploaded file. Please ensure it is a valid CSV or TXT file.');
+      onEmailsUploaded([]);
     }
-  }, [onEmailsUploaded]);
+  }, [onEmailsUploaded, maxEmailsPerBatch]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -64,8 +77,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploade
         </svg>
         <p className="mt-4 text-sm text-gray-600">
           {isDragActive
-            ? 'Drop the files here...'
-            : 'Drag & drop a TXT or CSV file here, or click to select files'}
+            ? 'Drop the file here...'
+            : `Drag & drop a TXT or CSV file here, or click to select files. (Max per batch: ${maxEmailsPerBatch} emails)`}
         </p>
       </div>
 
@@ -78,6 +91,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploade
               <li key={index}>{file.name}</li>
             ))}
           </ul>
+          {error && (
+            <p className="text-red-500 text-sm mt-2">{error}</p>
+          )}
         </div>
       )}
     </div>

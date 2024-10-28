@@ -4,14 +4,13 @@ import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import { useCredentials } from '../context/CredentialsContext';
 import AWSCredentialsForm from '../components/AWSCredentialsForm';
-import EmailValidationResults from '../components/EmailValidationResults'; // Correct Import
-import { DeliverabilityMetrics } from '../components/DeliverabilityMetrics';
-import { DKIMStatusDisplay } from '../components/DKIMStatusDisplay';
+import EmailValidationResults from '../components/EmailValidationResults';
+import { batchEmails } from '../utils/batchEmails'; // Import batching utility
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
-import { bouncePredictor } from '../utils/bounceRatePredictor';
 import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
+import { bouncePredictor } from '../utils/bounceRatePredictor';
 
 export default function Home() {
   const { credentials, isVerified, setCredentials } = useCredentials();
@@ -23,7 +22,6 @@ export default function Home() {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // If you choose to use logs, keep this. Otherwise, remove it.
   const [logs, setLogs] = useState<Array<{
     message: string;
     type: 'info' | 'success' | 'error' | 'warning';
@@ -60,28 +58,57 @@ export default function Home() {
     setError(null);
     addLog('Starting validation process...', 'info');
 
-    try {
-      const response = await fetch('/api/validateBulk', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          emails,
-          credentials 
-        }),
-      });
+    const BATCH_SIZE = 500; // Define batch size
+    const emailBatches = batchEmails(emails, BATCH_SIZE);
+    const totalBatches = emailBatches.length;
+    let allResults: SESValidationResult[] = [];
 
-      if (!response.ok) {
-        throw new Error(await response.text());
+    try {
+      for (let i = 0; i < totalBatches; i++) {
+        const batch = emailBatches[i];
+        addLog(`Validating batch ${i + 1} of ${totalBatches}`, 'info');
+
+        const response = await fetch('/api/validateBulk', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            emails: batch,
+            credentials 
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Validation failed');
+        }
+
+        const data = await response.json();
+
+        allResults = allResults.concat(data.results);
+        addLog(`Batch ${i + 1} validated successfully`, 'success');
       }
 
-      const data = await response.json();
-      
-      const bounceMetrics = bouncePredictor.predictBounceRate(data.results);
-      
-      const enhancedStats = {
-        ...data.stats,
+      // After all batches are processed, perform aggregate analysis
+      const bounceMetrics = bouncePredictor.predictBounceRate(allResults);
+
+      const enhancedStats: ValidationStatistics = {
+        total: allResults.length,
+        verified: allResults.filter(r => r.is_valid).length,
+        failed: allResults.filter(r => !r.is_valid).length,
+        pending: allResults.filter(r => r.verification_status === 'Pending').length,
+        domains: {
+          total: new Set(allResults.map(r => r.email.split('@')[1])).size,
+          verified: new Set(
+            allResults
+              .filter(r => r.details.domain_status.verified)
+              .map(r => r.email.split('@')[1])
+          ).size
+        },
+        dkim: {
+          enabled: allResults.filter(r => r.details.domain_status.has_dkim).length
+        },
         deliverability: {
           score: 100 - bounceMetrics.predictedRate,
           predictedBounceRate: bounceMetrics.predictedRate,
@@ -90,12 +117,12 @@ export default function Home() {
       };
 
       setValidationResults({
-        results: data.results,
+        results: allResults,
         stats: enhancedStats
       });
 
-      addLog(`Validation completed successfully`, 'success');
-      addLog(`Found ${data.stats.verified} valid emails`, 'success');
+      addLog(`All batches validated successfully`, 'success');
+      addLog(`Found ${allResults.filter(r => r.is_valid).length} valid emails`, 'success');
       addLog(`Predicted bounce rate: ${bounceMetrics.predictedRate}%`, 'info');
 
     } catch (error) {
@@ -154,14 +181,6 @@ export default function Home() {
                     <EmailValidationResults 
                       results={validationResults.results}
                       stats={validationResults.stats}
-                    />
-                    <DeliverabilityMetrics
-                      score={validationResults.stats.deliverability?.score || 0}
-                      recommendations={validationResults.stats.deliverability?.recommendations || []}
-                    />
-                    <DKIMStatusDisplay
-                      domains={[...new Set(validationResults.results.map(r => r.email.split('@')[1]))]}
-                      results={validationResults.results}
                     />
                     <BounceRatePrediction
                       predictedRate={validationResults.stats.deliverability?.predictedBounceRate || 0}
