@@ -1,11 +1,9 @@
-// utils/hybridValidator.ts
 import { 
   SESClient, 
   GetIdentityVerificationAttributesCommand, 
   ListIdentitiesCommand,
   VerificationStatus,
-  IdentityVerificationAttributes,
-  DkimAttributes as AWSDkimAttributes
+  IdentityVerificationAttributes
 } from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
@@ -14,6 +12,12 @@ import dns from 'dns/promises';
 
 // Define a type for the allowed verification statuses
 type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;
+
+// Define the DkimAttributes interface manually
+interface DkimAttributes {
+  DkimStatus?: VerificationStatus;
+  DkimTokens?: string[];
+}
 
 export class HybridValidator {
   private sesClient: SESClient;
@@ -51,7 +55,7 @@ export class HybridValidator {
         const domainAttrs = response.VerificationAttributes[domain];
         const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
 
-        const dkimAttrs = (domainAttrs as any).DkimAttributes as AWSDkimAttributes | undefined;
+        const dkimAttrs = (domainAttrs as any).DkimAttributes as DkimAttributes | undefined;
 
         return {
           verificationStatus: status,
