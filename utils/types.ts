@@ -59,3 +59,15 @@ export interface EmailValidationError {
   message: string;
   timestamp: string;
 }
+
+export interface BounceRateMetrics {
+  predictedRate: number;
+  confidence: number;
+  factors: {
+    domainReputation: number;
+    listQuality: number;
+    authenticationStatus: number;
+    historicalPerformance: number;
+  };
+  recommendations: string[];
+}

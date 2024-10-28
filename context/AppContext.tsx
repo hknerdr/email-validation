@@ -1,48 +1,41 @@
+// context/AppContext.tsx
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 
-// Define types for our state and actions
-interface Email {
+export interface Email {
   email: string;
   is_valid: boolean;
   reason?: string;
   success?: boolean;
 }
 
-interface State {
+export interface AppState {
   emails: string[];
   validatedEmails: Email[];
   loading: boolean;
   error: string | null;
 }
 
-type Action =
+export type AppAction =
   | { type: 'SET_EMAILS'; payload: string[] }
   | { type: 'SET_VALIDATED_EMAILS'; payload: Email[] }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null };
 
-interface AppContextType {
-  state: State;
-  dispatch: React.Dispatch<Action>;
+export interface AppContextType {
+  state: AppState;
+  dispatch: React.Dispatch<AppAction>;
 }
 
-// Initial state
-const initialState: State = {
+const initialState: AppState = {
   emails: [],
   validatedEmails: [],
   loading: false,
   error: null,
 };
 
-// Create context
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Provider component
-interface AppProviderProps {
-  children: ReactNode;
-}
-
-export function AppProvider({ children }: AppProviderProps) {
+export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   return (
@@ -52,8 +45,7 @@ export function AppProvider({ children }: AppProviderProps) {
   );
 }
 
-// Reducer function
-function reducer(state: State, action: Action): State {
+function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_EMAILS':
       return { ...state, emails: action.payload };
@@ -68,7 +60,6 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-// Custom hook to use the context
 export function useAppContext() {
   const context = useContext(AppContext);
   if (context === undefined) {

@@ -9,7 +9,8 @@ import {
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  ChartOptions
 } from 'chart.js';
 
 ChartJS.register(
@@ -22,13 +23,17 @@ ChartJS.register(
   Legend
 );
 
-interface Props {
+interface DeliverabilityMetricsProps {
   score: number;
   recommendations: string[];
   history?: { date: string; score: number }[];
 }
 
-export const DeliverabilityMetrics: React.FC<Props> = ({ score, recommendations, history = [] }) => {
+export const DeliverabilityMetrics: React.FC<DeliverabilityMetricsProps> = ({
+  score,
+  recommendations,
+  history = []
+}) => {
   const chartData = {
     labels: history.map(h => h.date),
     datasets: [
@@ -39,6 +44,17 @@ export const DeliverabilityMetrics: React.FC<Props> = ({ score, recommendations,
         backgroundColor: 'rgba(59, 130, 246, 0.5)',
       }
     ]
+  };
+
+  const options: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true,
+        max: 100
+      }
+    }
   };
 
   const getScoreColor = (score: number) => {
@@ -61,19 +77,7 @@ export const DeliverabilityMetrics: React.FC<Props> = ({ score, recommendations,
 
       {history.length > 0 && (
         <div className="h-48 mb-6">
-          <Line
-            data={chartData}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  beginAtZero: true,
-                  max: 100
-                }
-              }
-            }}
-          />
+          <Line data={chartData} options={options} />
         </div>
       )}
 

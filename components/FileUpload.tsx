@@ -2,7 +2,11 @@
 import React, { useCallback, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 
-const FileUpload: React.FC = () => {
+interface FileUploadProps {
+  className?: string;
+}
+
+const FileUpload: React.FC<FileUploadProps> = ({ className = '' }) => {
   const { dispatch } = useAppContext();
   const [isDragging, setIsDragging] = useState(false);
 
@@ -16,7 +20,10 @@ const FileUpload: React.FC = () => {
 
       dispatch({ type: 'SET_EMAILS', payload: emails });
     } catch (error) {
-      console.error('Error processing file:', error);
+      dispatch({ 
+        type: 'SET_ERROR', 
+        payload: error instanceof Error ? error.message : 'Error processing file' 
+      });
     }
   }, [dispatch]);
 
@@ -52,6 +59,7 @@ const FileUpload: React.FC = () => {
           ? 'border-blue-500 bg-blue-50'
           : 'border-gray-300 hover:border-gray-400'
         }
+        ${className}
       `}
     >
       <div className="space-y-4">
