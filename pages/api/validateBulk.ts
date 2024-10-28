@@ -75,6 +75,8 @@ export default async function validateBulk(
   } catch (error) {
     console.error('Validation failed:', error);
     const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+
+    // Ensure the response is always JSON
     return res.status(500).json({ 
       error: 'Validation failed', 
       details: errorMessage 

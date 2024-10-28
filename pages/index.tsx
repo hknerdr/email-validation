@@ -80,7 +80,12 @@ export default function Home() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
+          let errorData: any = {};
+          try {
+            errorData = await response.json();
+          } catch (parseError) {
+            errorData = { error: 'Failed to parse error response from server.' };
+          }
           throw new Error(errorData.error || 'Validation failed');
         }
 
