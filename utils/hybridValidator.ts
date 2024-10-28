@@ -1,9 +1,17 @@
 // utils/hybridValidator.ts
-import { SESClient, GetIdentityVerificationAttributesCommand, ListIdentitiesCommand } from "@aws-sdk/client-ses";
+import { 
+  SESClient, 
+  GetIdentityVerificationAttributesCommand, 
+  ListIdentitiesCommand,
+  VerificationStatus 
+} from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
 import type { SESValidationResult, BulkValidationResult, ValidationStatistics, VerificationAttributes } from './types';
 import dns from 'dns/promises';
+
+// Define a type for the allowed verification statuses
+type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;
 
 export class HybridValidator {
   private sesClient: SESClient;
@@ -18,43 +26,24 @@ export class HybridValidator {
     });
   }
 
-  private async getDomainVerificationStatus(domain: string): Promise<VerificationAttributes | null> {
-    try {
-      const command = new GetIdentityVerificationAttributesCommand({
-        Identities: [domain]
-      });
-      
-      const response = await this.sesClient.send(command);
-      
-      if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
-        return {
-          verificationStatus: response.VerificationAttributes[domain].VerificationStatus,
-          dkimAttributes: response.VerificationAttributes[domain].DkimAttributes
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error getting domain verification status:', error);
-      return null;
-    }
-  }
-
   private async checkDNSRecords(domain: string): Promise<{
     hasMX: boolean;
     hasSPF: boolean;
     hasDMARC: boolean;
   }> {
     try {
+      // Check both MX and TXT records in parallel
       const [mxRecords, txtRecords] = await Promise.all([
         dns.resolveMx(domain),
         dns.resolveTxt(domain)
       ]);
 
+      // Check for SPF record in TXT records
       const hasSPF = txtRecords.some(records => 
         records.some(record => record.startsWith('v=spf1'))
       );
 
+      // Check for DMARC record
       let hasDMARC = false;
       try {
         const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
@@ -72,6 +61,45 @@ export class HybridValidator {
       };
     } catch {
       return { hasMX: false, hasSPF: false, hasDMARC: false };
+    }
+  }
+
+  private mapVerificationStatus(status: VerificationStatus | undefined): SESVerificationStatus {
+    switch (status) {
+      case 'Success':
+      case 'Failed':
+      case 'Pending':
+        return status;
+      default:
+        return 'NotStarted';
+    }
+  }
+
+  private async getDomainVerificationStatus(domain: string): Promise<VerificationAttributes | null> {
+    try {
+      const command = new GetIdentityVerificationAttributesCommand({
+        Identities: [domain]
+      });
+      
+      const response = await this.sesClient.send(command);
+      
+      if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
+        const domainAttrs = response.VerificationAttributes[domain];
+        const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
+
+        return {
+          verificationStatus: status,
+          dkimAttributes: domainAttrs.DkimAttributes ? {
+            status: this.mapVerificationStatus(domainAttrs.DkimAttributes.Status),
+            tokens: domainAttrs.DkimAttributes.DkimTokens || []
+          } : undefined
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting domain verification status:', error);
+      return null;
     }
   }
 
@@ -109,6 +137,13 @@ export class HybridValidator {
         }
       }
     };
+  }
+
+  private determineFailureReason(smtpResult: any, dnsResults: any): string {
+    if (!dnsResults.hasMX) return 'No MX records found';
+    if (smtpResult.is_catch_all) return 'Catch-all domain detected';
+    if (!smtpResult.is_valid) return smtpResult.smtp_response || 'SMTP validation failed';
+    return 'Multiple validation checks failed';
   }
 
   public async validateEmail(email: string): Promise<SESValidationResult> {
@@ -149,23 +184,18 @@ export class HybridValidator {
     };
   }
 
-  private determineFailureReason(smtpResult: any, dnsResults: any): string {
-    if (!dnsResults.hasMX) return 'No MX records found';
-    if (smtpResult.is_catch_all) return 'Catch-all domain detected';
-    if (!smtpResult.is_valid) return smtpResult.smtp_response || 'SMTP validation failed';
-    return 'Multiple validation checks failed';
-  }
-
   public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
     const batchSize = 50;
     const allResults: SESValidationResult[] = [];
     const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
 
     // Pre-fetch domain verifications for all unique domains
-    const domainVerifications = await Promise.all(
-      Array.from(uniqueDomains).map(domain => this.getDomainVerificationStatus(domain))
+    const domainVerificationPromises = Array.from(uniqueDomains).map(domain => 
+      this.getDomainVerificationStatus(domain)
     );
+    await Promise.all(domainVerificationPromises);
 
+    // Process emails in batches
     for (let i = 0; i < emails.length; i += batchSize) {
       const batch = emails.slice(i, i + batchSize);
       const batchResults = await Promise.all(
@@ -173,6 +203,7 @@ export class HybridValidator {
       );
       allResults.push(...batchResults);
 
+      // Add delay between batches to avoid rate limits
       if (i + batchSize < emails.length) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
