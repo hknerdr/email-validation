@@ -1,135 +1,28 @@
 // utils/hybridValidator.ts
 
-import { 
-  SESClient, 
-  GetIdentityVerificationAttributesCommand, 
-  VerificationStatus 
-} from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
 import type { 
   SESValidationResult, 
   BulkValidationResult, 
-  ValidationStatistics, 
-  VerificationAttributes 
+  ValidationStatistics 
 } from './types';
 import { Cache } from './cache';
 import pLimit from 'p-limit';
 import dns from 'dns/promises';
-import pRetry, { AbortError } from 'p-retry'; // Ensure p-retry is installed
-
-// Define a type for the allowed verification statuses
-type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;
-
-// Define the DkimAttributes interface manually
-interface DkimAttributes {
-  DkimStatus?: VerificationStatus;
-  DkimTokens?: string[];
-}
 
 export class HybridValidator {
-  private sesClient: SESClient;
-  private domainVerificationCache: Cache<VerificationAttributes>;
+  private dnsCache: Cache<{
+    hasMX: boolean;
+    hasSPF: boolean;
+    hasDMARC: boolean;
+  }>;
 
-  constructor(credentials: { accessKeyId: string; secretAccessKey: string; region: string }) {
-    this.sesClient = new SESClient({
-      region: credentials.region,
-      credentials: {
-        accessKeyId: credentials.accessKeyId,
-        secretAccessKey: credentials.secretAccessKey
-      },
-      maxAttempts: 5, // Increase retry attempts
-      retryStrategy: undefined // Use default retry strategy
-    });
-    this.domainVerificationCache = new Cache<VerificationAttributes>({
+  constructor() {
+    this.dnsCache = new Cache({
       ttl: 24 * 60 * 60 * 1000, // 24 hours
       maxSize: 1000
     });
-  }
-
-  private mapVerificationStatus(status: VerificationStatus | undefined): SESVerificationStatus {
-    switch (status) {
-      case 'Success':
-      case 'Failed':
-      case 'Pending':
-        return status;
-      default:
-        return 'NotStarted';
-    }
-  }
-
-  private async getDomainVerificationStatus(domain: string): Promise<VerificationAttributes | null> {
-    // Check cache first
-    const cached = this.domainVerificationCache.get(domain);
-    if (cached) {
-      console.log(`Cache hit for domain: ${domain}`);
-      return cached;
-    }
-
-    try {
-      // Implement retry logic with exponential backoff for throttling
-      const verificationAttributes = await pRetry(async () => {
-        const command = new GetIdentityVerificationAttributesCommand({
-          Identities: [domain]
-        });
-
-        const response = await this.sesClient.send(command);
-
-        console.log(`SES response for domain ${domain}:`, JSON.stringify(response, null, 2));
-
-        if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
-          const domainAttrs = response.VerificationAttributes[domain];
-          const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
-          
-          console.log(`Domain ${domain} verification status: ${status}`);
-
-          const dkimAttrs = (domainAttrs as any).DkimAttributes as DkimAttributes | undefined;
-
-          const verificationAttributes: VerificationAttributes = {
-            verificationStatus: status,
-            dkimAttributes: dkimAttrs ? {
-              status: this.mapVerificationStatus(dkimAttrs.DkimStatus),
-              tokens: dkimAttrs.DkimTokens || []
-            } : undefined
-          };
-
-          return verificationAttributes;
-        }
-
-        // If attributes not found, abort retries
-        throw new AbortError('Domain verification attributes not found.');
-      }, {
-        retries: 5,
-        onFailedAttempt: error => {
-          if (error instanceof AbortError) {
-            // Do not retry on AbortError
-            console.warn(`Aborting retries for domain ${domain}: ${error.message}`);
-          } else {
-            console.warn(`Attempt ${error.attemptNumber} failed for domain ${domain}. Retries left: ${error.retriesLeft}. Error: ${error.message}`);
-          }
-        },
-        factor: 2,
-        minTimeout: 1000,
-        maxTimeout: 8000,
-        randomize: true
-      });
-
-      // Cache the result
-      this.domainVerificationCache.set(domain, verificationAttributes);
-      console.log(`Cached verification attributes for domain: ${domain}`);
-
-      return verificationAttributes;
-    } catch (error) {
-      if (error instanceof AbortError) {
-        // Attributes not found, return null without retrying
-        console.info(`Domain ${domain} is not verified.`);
-        return null;
-      } else {
-        // Log and return null for other errors
-        console.error(`Error getting domain verification status for ${domain}:`, error);
-        return null;
-      }
-    }
   }
 
   private async checkDNSRecords(domain: string): Promise<{
@@ -137,6 +30,13 @@ export class HybridValidator {
     hasSPF: boolean;
     hasDMARC: boolean;
   }> {
+    // Check cache first
+    const cached = this.dnsCache.get(domain);
+    if (cached) {
+      console.log(`Cache hit for DNS records of domain: ${domain}`);
+      return cached;
+    }
+
     try {
       const [mxRecords, txtRecords] = await Promise.all([
         dns.resolveMx(domain),
@@ -157,11 +57,17 @@ export class HybridValidator {
         hasDMARC = false;
       }
 
-      return {
+      const dnsResults = {
         hasMX: mxRecords.length > 0,
         hasSPF,
         hasDMARC
       };
+
+      // Cache the DNS results
+      this.dnsCache.set(domain, dnsResults);
+      console.log(`Cached DNS records for domain: ${domain}`);
+
+      return dnsResults;
     } catch (error) {
       console.error(`DNS resolution failed for domain ${domain}:`, error);
       return { hasMX: false, hasSPF: false, hasDMARC: false };
@@ -221,9 +127,6 @@ export class HybridValidator {
     // Step 3: SMTP validation
     const smtpResult = await smtpValidator.validateEmail(email);
 
-    // Step 4: SES domain verification check
-    const sesVerification = await this.getDomainVerificationStatus(domain);
-
     // Combine all results
     const isValid = smtpResult.is_valid && dnsResults.hasMX && !smtpResult.is_catch_all;
 
@@ -234,13 +137,12 @@ export class HybridValidator {
       reason: !isValid ? this.determineFailureReason(smtpResult, dnsResults) : undefined,
       details: {
         domain_status: {
-          verified: sesVerification?.verificationStatus === 'Success',
+          verified: false, // SES verification removed
           has_mx_records: dnsResults.hasMX,
-          has_dkim: sesVerification?.dkimAttributes?.status === 'Success',
+          has_dkim: false, // SES verification removed
           has_spf: dnsResults.hasSPF,
           dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
-        },
-        verification_attributes: sesVerification ?? undefined
+        }
       }
     };
   }
@@ -253,15 +155,15 @@ export class HybridValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
-    const limit = pLimit(2); // Further reduced concurrency to mitigate throttling
+    const limit = pLimit(5); // Adjust concurrency as needed
     const allResults: SESValidationResult[] = [];
     const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
 
-    // Pre-fetch domain verifications for all unique domains with retries
-    const domainVerificationPromises = Array.from(uniqueDomains).map(domain => 
-      limit(() => this.getDomainVerificationStatus(domain))
+    // Pre-fetch DNS checks for all unique domains
+    const dnsCheckPromises = Array.from(uniqueDomains).map(domain => 
+      limit(() => this.checkDNSRecords(domain))
     );
-    await Promise.all(domainVerificationPromises);
+    await Promise.all(dnsCheckPromises);
 
     // Process emails with controlled concurrency
     const validationPromises = emails.map(email =>
@@ -313,10 +215,6 @@ export class HybridValidator {
   }
 }
 
-export const createHybridValidator = (credentials: { 
-  accessKeyId: string; 
-  secretAccessKey: string; 
-  region: string; 
-}) => {
-  return new HybridValidator(credentials);
+export const createHybridValidator = () => {
+  return new HybridValidator();
 };

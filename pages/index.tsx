@@ -10,7 +10,6 @@ import { BounceRatePrediction } from '../components/BounceRatePrediction';
 import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
-import { bouncePredictor } from '../utils/bounceRatePredictor';
 
 interface ValidationResponse {
   results: SESValidationResult[];
@@ -87,8 +86,7 @@ export default function Home() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ 
-            emails: batch,
-            credentials 
+            emails: batch
           }),
         });
 
@@ -96,9 +94,10 @@ export default function Home() {
           let errorData: ErrorResponse = { error: 'Validation failed' };
           try {
             errorData = await response.json();
+            addLog(`Batch ${i + 1} failed: ${errorData.error} - ${errorData.details || ''}`, 'error');
           } catch (parseError) {
             console.error('Failed to parse error response:', parseError);
-            throw new Error('Failed to parse error response from server.');
+            addLog(`Batch ${i + 1} failed: Unable to parse error response from server.`, 'error');
           }
           throw new Error(errorData.error || 'Validation failed');
         }
@@ -146,7 +145,7 @@ export default function Home() {
 
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
-      addLog('Validation failed', 'error');
+      addLog(`Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setIsValidating(false);
     }
