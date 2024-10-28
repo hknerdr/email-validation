@@ -66,4 +66,9 @@ export function CredentialsProvider({ children }: { children: ReactNode }) {
 }
 
 export function useCredentials() {
-  const context = useContext(Credentials
+  const context = useContext(CredentialsContext);
+  if (context === undefined) {
+    throw new Error('useCredentials must be used within a CredentialsProvider');
+  }
+  return context;
+}
