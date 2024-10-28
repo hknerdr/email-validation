@@ -1,5 +1,6 @@
 // utils/hybridValidator.ts
 
+import { SESClient } from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
 import type { 
@@ -12,13 +13,23 @@ import pLimit from 'p-limit';
 import dns from 'dns/promises';
 
 export class HybridValidator {
+  private sesClient: SESClient;
   private dnsCache: Cache<{
     hasMX: boolean;
     hasSPF: boolean;
     hasDMARC: boolean;
   }>;
 
-  constructor() {
+  constructor(credentials: { accessKeyId: string; secretAccessKey: string; region: string }) {
+    this.sesClient = new SESClient({
+      region: credentials.region,
+      credentials: {
+        accessKeyId: credentials.accessKeyId,
+        secretAccessKey: credentials.secretAccessKey
+      },
+      maxAttempts: 5,
+      retryStrategy: undefined
+    });
     this.dnsCache = new Cache({
       ttl: 24 * 60 * 60 * 1000, // 24 hours
       maxSize: 1000
@@ -215,6 +226,8 @@ export class HybridValidator {
   }
 }
 
-export const createHybridValidator = () => {
+export const createHybridValidator = (credentials?: { accessKeyId: string; secretAccessKey: string; region: string }) => {
+  // If credentials are provided, initialize SESClient; otherwise, proceed without it
+  // Since we've removed SES verification, credentials are no longer needed
   return new HybridValidator();
 };

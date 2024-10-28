@@ -44,12 +44,21 @@ export default async function validateBulk(
     const MAX_EMAILS = 500; // Define maximum emails per request
 
     // Validate request body
-    if (!emails?.length || !credentials?.accessKeyId || !credentials?.secretAccessKey) {
-      const missing = !emails?.length ? 'No emails provided' : 'Invalid AWS credentials';
+    if (!emails?.length) {
+      const missing = 'No emails provided.';
       console.error(`Bad Request: ${missing}`);
       return res.status(400).json({ 
         error: 'Missing required fields',
         details: missing
+      });
+    }
+
+    if (!credentials?.accessKeyId || !credentials?.secretAccessKey || !credentials?.region) {
+      const missingCreds = 'Missing AWS credentials.';
+      console.error(`Bad Request: ${missingCreds}`);
+      return res.status(400).json({ 
+        error: 'Missing AWS credentials',
+        details: missingCreds
       });
     }
 
@@ -60,11 +69,7 @@ export default async function validateBulk(
       });
     }
 
-    const validator = createHybridValidator({
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-      region: credentials.region || 'us-east-1' // Ensure correct region
-    });
+    const validator = createHybridValidator(credentials);
 
     console.log(`Starting bulk validation for ${emails.length} emails.`);
 
