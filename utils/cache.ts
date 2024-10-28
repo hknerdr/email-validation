@@ -23,8 +23,11 @@ export class Cache<T = any> {
   set(key: string, value: T): void {
     if (this.store.size >= this.maxSize) {
       // Remove oldest entry
-      const oldestKey = this.store.keys().next().value;
-      this.store.delete(oldestKey);
+      const iterator = this.store.keys();
+      const firstKey = iterator.next();
+      if (!firstKey.done && firstKey.value) {
+        this.store.delete(firstKey.value);
+      }
     }
 
     this.store.set(key, {
