@@ -30,7 +30,7 @@ interface Props {
 }
 
 const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
-  const domains = [...new Set(results.map(r => r.email.split('@')[1]))];
+  const domains = Array.from(new Set(results.map(r => r.email.split('@')[1])));
 
   return (
     <div className="space-y-6">
