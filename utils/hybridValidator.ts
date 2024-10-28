@@ -203,7 +203,7 @@ export class HybridValidator {
           has_spf: dnsResults.hasSPF,
           dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
         },
-        verification_attributes: sesVerification
+        verification_attributes: sesVerification ?? undefined // Fixed line
       }
     };
   }
