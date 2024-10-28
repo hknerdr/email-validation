@@ -2,13 +2,21 @@
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createHybridValidator } from '../../utils/hybridValidator';
+import type { SESValidationResult, ValidationStatistics, BulkValidationResult } from '../../utils/types';
 
+// Define the shape of a successful validation response
 interface ValidationResponse {
-  results: any[];
-  stats: any;
+  results: SESValidationResult[];
+  stats: ValidationStatistics;
   totalProcessed: number;
   successful: number;
   failed: number;
+}
+
+// Define the shape of an error response
+interface ErrorResponse {
+  error: string;
+  details?: string;
 }
 
 export const config = {
@@ -23,7 +31,7 @@ export const config = {
 
 export default async function validateBulk(
   req: NextApiRequest,
-  res: NextApiResponse<ValidationResponse | { error: string; details?: string }>
+  res: NextApiResponse<ValidationResponse | ErrorResponse>
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -34,6 +42,7 @@ export default async function validateBulk(
 
     const MAX_EMAILS = 500; // Define maximum emails per request
 
+    // Validate request body
     if (!emails?.length || !credentials?.accessKeyId || !credentials?.secretAccessKey) {
       return res.status(400).json({ 
         error: 'Missing required fields',
@@ -53,7 +62,7 @@ export default async function validateBulk(
       region: credentials.region || 'us-east-1'
     });
 
-    const validationResult = await validator.validateBulk(emails);
+    const validationResult: BulkValidationResult = await validator.validateBulk(emails);
 
     return res.status(200).json({
       results: validationResult.results,
