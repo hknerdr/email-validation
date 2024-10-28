@@ -1,5 +1,6 @@
 // components/FileUpload.tsx
 import React, { useCallback, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
 
 interface FileUploadProps {
   className?: string;
@@ -7,59 +8,39 @@ interface FileUploadProps {
 }
 
 const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploaded }) => {
-  const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
-  const processFile = useCallback(async (file: File) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    setUploadedFiles(acceptedFiles);
     try {
-      const text = await file.text();
-      const emails = text
-        .split(/[\n,]/)
-        .map(email => email.trim())
-        .filter(email => email && email.includes('@'));
-
+      const emails = await parseCSV(acceptedFiles[0]); // Assuming single file upload
       onEmailsUploaded(emails);
     } catch (error) {
-      console.error(error);
-      // Optionally, you can pass error information back via another prop
+      console.error('Error parsing CSV:', error);
+      // Optionally, handle parsing errors
     }
   }, [onEmailsUploaded]);
 
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      processFile(file);
-    }
-  }, [processFile]);
-
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
-    }
-  }, [processFile]);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'text/csv': ['.csv'],
+      'text/plain': ['.txt'],
+    },
+    multiple: false,
+  });
 
   return (
-    <div
-      onDragOver={e => {
-        e.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={() => setIsDragging(false)}
-      onDrop={handleDrop}
-      className={`
-        border-2 border-dashed rounded-lg p-8 text-center
-        transition-all duration-200 ease-in-out
-        ${isDragging
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-gray-300 hover:border-gray-400'
-        }
-        ${className}
-      `}
-    >
-      <div className="space-y-4">
+    <div className={className}>
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all duration-200 ease-in-out ${
+          isDragActive
+            ? 'border-blue-500 bg-blue-50'
+            : 'border-gray-300 hover:border-gray-400'
+        }`}
+      >
+        <input {...getInputProps()} />
         <svg
           className="mx-auto h-12 w-12 text-gray-400"
           stroke="currentColor"
@@ -68,33 +49,36 @@ const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploade
           aria-hidden="true"
         >
           <path
-            d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+            d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h20a4 4 0 004-4V16a4 4 0 00-4-4z"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M28 8v20m0 0l-4-4m4 4l4-4"
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
-        <div className="text-gray-600">
-          <label
-            htmlFor="file-upload"
-            className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500"
-          >
-            <span>Upload a file</span>
-            <input
-              id="file-upload"
-              name="file-upload"
-              type="file"
-              className="sr-only"
-              accept=".txt,.csv"
-              onChange={handleFileInput}
-            />
-          </label>
-          <p className="pl-1">or drag and drop</p>
-        </div>
-        <p className="text-xs text-gray-500">
-          TXT or CSV files with one email per line
+        <p className="mt-4 text-sm text-gray-600">
+          {isDragActive
+            ? 'Drop the files here...'
+            : 'Drag & drop a TXT or CSV file here, or click to select files'}
         </p>
       </div>
+
+      {/* Display Uploaded Files */}
+      {uploadedFiles.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Uploaded File:</h4>
+          <ul className="list-disc list-inside text-sm text-gray-600">
+            {uploadedFiles.map((file, index) => (
+              <li key={index}>{file.name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

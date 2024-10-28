@@ -1,14 +1,20 @@
+// utils/hybridValidator.ts
+
 import { 
   SESClient, 
   GetIdentityVerificationAttributesCommand, 
-  ListIdentitiesCommand,
-  VerificationStatus,
-  IdentityVerificationAttributes
+  VerificationStatus 
 } from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
-import type { SESValidationResult, BulkValidationResult, ValidationStatistics, VerificationAttributes } from './types';
-import dns from 'dns/promises';
+import type { 
+  SESValidationResult, 
+  BulkValidationResult, 
+  ValidationStatistics, 
+  VerificationAttributes 
+} from './types';
+import { Cache } from './cache';
+import pLimit from 'p-limit';
 
 // Define a type for the allowed verification statuses
 type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;
@@ -21,6 +27,7 @@ interface DkimAttributes {
 
 export class HybridValidator {
   private sesClient: SESClient;
+  private domainVerificationCache: Cache<VerificationAttributes>;
 
   constructor(credentials: { accessKeyId: string; secretAccessKey: string; region: string }) {
     this.sesClient = new SESClient({
@@ -29,6 +36,10 @@ export class HybridValidator {
         accessKeyId: credentials.accessKeyId,
         secretAccessKey: credentials.secretAccessKey
       }
+    });
+    this.domainVerificationCache = new Cache<VerificationAttributes>({
+      ttl: 24 * 60 * 60 * 1000, // 24 hours
+      maxSize: 1000
     });
   }
 
@@ -44,6 +55,12 @@ export class HybridValidator {
   }
 
   private async getDomainVerificationStatus(domain: string): Promise<VerificationAttributes | null> {
+    // Check cache first
+    const cached = this.domainVerificationCache.get(domain);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const command = new GetIdentityVerificationAttributesCommand({
         Identities: [domain]
@@ -57,13 +74,18 @@ export class HybridValidator {
 
         const dkimAttrs = (domainAttrs as any).DkimAttributes as DkimAttributes | undefined;
 
-        return {
+        const verificationAttributes: VerificationAttributes = {
           verificationStatus: status,
           dkimAttributes: dkimAttrs ? {
             status: this.mapVerificationStatus(dkimAttrs.DkimStatus),
             tokens: dkimAttrs.DkimTokens || []
           } : undefined
         };
+
+        // Cache the result
+        this.domainVerificationCache.set(domain, verificationAttributes);
+
+        return verificationAttributes;
       }
       
       return null;
@@ -123,7 +145,8 @@ export class HybridValidator {
             verified: false,
             has_mx_records: false,
             has_dkim: false,
-            has_spf: false
+            has_spf: false,
+            dmarc_status: 'none'
           }
         }
       };
@@ -138,7 +161,8 @@ export class HybridValidator {
           verified: false,
           has_mx_records: false,
           has_dkim: false,
-          has_spf: false
+          has_spf: false,
+          dmarc_status: 'none'
         }
       }
     };
@@ -177,7 +201,8 @@ export class HybridValidator {
           has_dkim: sesVerification?.dkimAttributes?.status === 'Success',
           has_spf: dnsResults.hasSPF,
           dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
-        }
+        },
+        verification_attributes: sesVerification
       }
     };
   }
@@ -190,7 +215,7 @@ export class HybridValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
-    const batchSize = 50;
+    const limit = pLimit(10); // Limit to 10 concurrent validations
     const allResults: SESValidationResult[] = [];
     const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
 
@@ -200,18 +225,13 @@ export class HybridValidator {
     );
     await Promise.all(domainVerificationPromises);
 
-    // Process emails in batches
-    for (let i = 0; i < emails.length; i += batchSize) {
-      const batch = emails.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(email => this.validateEmail(email))
-      );
-      allResults.push(...batchResults);
+    // Process emails with controlled concurrency
+    const validationPromises = emails.map(email =>
+      limit(() => this.validateEmail(email))
+    );
 
-      if (i + batchSize < emails.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
+    const validationResults = await Promise.all(validationPromises);
+    allResults.push(...validationResults);
 
     // Calculate statistics
     const stats = this.calculateStats(allResults);
@@ -249,7 +269,8 @@ export class HybridValidator {
       },
       dkim: {
         enabled: results.filter(r => r.details.domain_status.has_dkim).length
-      }
+      },
+      deliverability: undefined, // Will be set after prediction
     };
   }
 }

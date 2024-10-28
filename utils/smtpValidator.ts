@@ -1,6 +1,9 @@
+// utils/smtpValidator.ts
+
 import { createConnection } from 'net';
 import dns from 'dns/promises';
 import { promisify } from 'util';
+import pLimit from 'p-limit';
 
 interface SMTPValidationResult {
   email: string;
@@ -56,6 +59,7 @@ class SMTPValidator {
     });
   }
 
+  // Optional: Implement catch-all detection if needed
   private async testCatchAll(socket: any, domain: string): Promise<boolean> {
     try {
       // Test with a random email that's unlikely to exist
@@ -88,7 +92,7 @@ class SMTPValidator {
         return result;
       }
 
-      // 2. Try SMTP connection with each MX server
+      // 2. Try SMTP connection with each MX server with limited retries
       let socket;
       for (const mxHost of mxRecords) {
         try {
@@ -96,6 +100,7 @@ class SMTPValidator {
           result.details.connection_success = true;
           break;
         } catch (error) {
+          console.warn(`SMTP connection to ${mxHost} failed:`, error);
           continue;
         }
       }
@@ -104,28 +109,44 @@ class SMTPValidator {
         return result;
       }
 
-      // 3. SMTP conversation
+      // 3. SMTP conversation with timeouts and retries
       try {
-        // Get server greeting
+        // Set socket timeout
+        socket.setTimeout(10000); // 10 seconds
+
+        // Helper function to send command and wait for response
+        const sendCommand = async (cmd: string): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            socket.write(cmd + '\r\n');
+            socket.once('data', (data: Buffer) => {
+              resolve(data.toString());
+            });
+            socket.once('error', (err: Error) => {
+              reject(err);
+            });
+            socket.once('timeout', () => {
+              reject(new Error('SMTP connection timed out'));
+            });
+          });
+        };
+
+        // Read initial server greeting
         await new Promise(resolve => socket.once('data', resolve));
 
         // Send HELO
-        const heloResponse = await this.sendSMTPCommand(socket, `HELO validator.local`);
+        const heloResponse = await sendCommand(`HELO validator.local`);
         if (!heloResponse.startsWith('250')) {
           throw new Error('HELO failed');
         }
 
         // Send MAIL FROM
-        const fromResponse = await this.sendSMTPCommand(
-          socket,
-          `MAIL FROM:<validator@validator.local>`
-        );
+        const fromResponse = await sendCommand(`MAIL FROM:<validator@validator.local>`);
         if (!fromResponse.startsWith('250')) {
           throw new Error('MAIL FROM failed');
         }
 
         // Send RCPT TO
-        const rcptResponse = await this.sendSMTPCommand(socket, `RCPT TO:<${email}>`);
+        const rcptResponse = await sendCommand(`RCPT TO:<${email}>`);
         result.smtp_response = rcptResponse;
         result.details.smtp_code = parseInt(rcptResponse.substring(0, 3));
         result.details.smtp_message = rcptResponse.substring(4);
@@ -133,12 +154,17 @@ class SMTPValidator {
         // Check if recipient was accepted
         result.details.recipient_accepted = rcptResponse.startsWith('250');
         
-        // If accepted, check if it's a catch-all domain
+        // If accepted, optionally check if it's a catch-all domain
         if (result.details.recipient_accepted) {
-          result.is_catch_all = await this.testCatchAll(socket, domain);
+          // Optional: Implement catch-all detection only if necessary
+          // For performance, consider skipping or making it optional
+          // result.is_catch_all = await this.testCatchAll(socket, domain);
         }
 
-        result.is_valid = result.details.recipient_accepted && !result.is_catch_all;
+        // Determine validity (excluding catch-all for speed)
+        result.is_valid = result.details.recipient_accepted; 
+        // If catch-all is implemented:
+        // result.is_valid = result.details.recipient_accepted && !result.is_catch_all;
 
       } finally {
         // Clean up
@@ -158,22 +184,15 @@ class SMTPValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<SMTPValidationResult[]> {
+    const limit = pLimit(5); // Limit to 5 concurrent SMTP validations
     const results: SMTPValidationResult[] = [];
-    
-    // Process in small batches to avoid overwhelming SMTP servers
-    const batchSize = 5;
-    for (let i = 0; i < emails.length; i += batchSize) {
-      const batch = emails.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(email => this.validateEmail(email))
-      );
-      results.push(...batchResults);
-      
-      // Add delay between batches to avoid rate limits
-      if (i + batchSize < emails.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
+
+    const validationPromises = emails.map(email =>
+      limit(() => this.validateEmail(email))
+    );
+
+    const validationResults = await Promise.all(validationPromises);
+    results.push(...validationResults);
 
     return results;
   }

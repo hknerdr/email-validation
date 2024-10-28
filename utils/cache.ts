@@ -1,4 +1,5 @@
 // utils/cache.ts
+
 interface CacheOptions {
   ttl?: number; // Time to live in milliseconds
   maxSize?: number; // Maximum number of entries
@@ -32,13 +33,13 @@ export class Cache<T = any> {
 
     this.store.set(key, {
       value,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
   get(key: string): T | null {
     const entry = this.store.get(key);
-    
+
     if (!entry) {
       return null;
     }

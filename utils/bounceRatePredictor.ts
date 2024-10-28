@@ -1,4 +1,5 @@
 // utils/bounceRatePredictor.ts
+
 import type { SESValidationResult, BounceRateMetrics } from './types';
 
 class BounceRatePredictor {
@@ -21,7 +22,7 @@ class BounceRatePredictor {
       totalScore += (valid / total) * 100;
     });
 
-    return totalScore / domains.size;
+    return domains.size > 0 ? totalScore / domains.size : 100;
   }
 
   private calculateAuthenticationScore(results: SESValidationResult[]): number {
@@ -46,7 +47,7 @@ class BounceRatePredictor {
 
     // Calculate percentage of domains with authentication
     const authenticatedDomains = Array.from(domains.values()).filter(v => v).length;
-    return (authenticatedDomains / domains.size) * 100;
+    return domains.size > 0 ? (authenticatedDomains / domains.size) * 100 : 100;
   }
 
   private getRecommendations(metrics: {
@@ -102,7 +103,7 @@ class BounceRatePredictor {
     const predictedRate = Math.max(0, Math.min(100 - overallScore, 100));
     
     // Calculate confidence based on sample size
-    const confidence = Math.min(results.length / 1000 * 100, 100);
+    const confidence = Math.min((results.length / 1000) * 100, 100);
 
     return {
       predictedRate: Number(predictedRate.toFixed(2)),

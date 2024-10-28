@@ -1,8 +1,8 @@
 // utils/types.ts
+
 export interface DKIMAttributes {
   tokens?: string[];
   status: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
-  dkimTokens?: string[];
 }
 
 export interface VerificationAttributes {
