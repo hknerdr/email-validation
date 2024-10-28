@@ -29,6 +29,8 @@ module.exports = {
   rules: {
     // Allow unused variables if they start with an underscore
     '@typescript-eslint/no-unused-vars': ['error', { 'argsIgnorePattern': '^_', 'varsIgnorePattern': '^_' }],
+    // Disable the react/react-in-jsx-scope rule
+    'react/react-in-jsx-scope': 'off',
     // Other custom rules can be added here
   },
 };

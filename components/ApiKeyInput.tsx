@@ -12,20 +12,21 @@ const ApiKeyInput: React.FC<ApiKeyInputProps> = ({ apiKey, setApiKey }) => {
   return (
     <div className="space-y-4">
       <div className="relative">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-2">
           Mailgun Private API Key
           <span className="ml-1 text-xs text-gray-500">
-            (Find in Mailgun Dashboard → Settings → API Keys)
+           (Find in Mailgun Dashboard → Settings → API Keys)
           </span>
         </label>
         <div className="relative rounded-lg shadow-sm">
-          <input
-            type={showKey ? 'text' : 'password'}
-            placeholder="Enter your Mailgun private API key"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all duration-200 pr-12 font-mono text-sm"
-          />
+         <input
+           id="apiKey" // Added id to associate with label
+           type={showKey ? 'text' : 'password'}
+           placeholder="Enter your Mailgun private API key"
+           value={apiKey}
+           onChange={(e) => setApiKey(e.target.value)}
+           className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all duration-200 pr-12 font-mono text-sm"
+         />
           <button
             type="button"
             onClick={() => setShowKey(!showKey)}
