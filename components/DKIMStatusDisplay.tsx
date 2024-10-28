@@ -104,7 +104,7 @@ export const DKIMStatusDisplay: React.FC<Props> = ({ domains, results }) => {
                       <li>Open AWS SES Console</li>
                       <li>Navigate to Verified Identities</li>
                       <li>Select your domain</li>
-                      <li>Click on "View or generate DKIM settings"</li>
+                      <li>Click on &quot;View or generate DKIM settings&quot;</li> {/* Escaped double quotes */}
                       <li>Follow AWS instructions to add DKIM records to your DNS</li>
                     </ol>
                   </div>
