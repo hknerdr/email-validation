@@ -20,7 +20,7 @@ export function CredentialsProvider({ children }: { children: ReactNode }) {
   const [credentials, setCredentialsState] = useState<AWSCredentials | null>(null);
   const [isVerified, setIsVerified] = useState(false);
 
-  const setCredentials = useCallback(async (creds: AWSCredentials) => {
+  const setCredentials = useCallback(async (creds: AWSCredentials): Promise<boolean> => {
     try {
       const response = await fetch('/api/ses-credentials', {
         method: 'POST',
@@ -51,24 +51,19 @@ export function CredentialsProvider({ children }: { children: ReactNode }) {
     setIsVerified(false);
   }, []);
 
+  const value = {
+    credentials,
+    isVerified,
+    setCredentials,
+    clearCredentials,
+  };
+
   return (
-    <CredentialsContext.Provider
-      value={{
-        credentials,
-        isVerified,
-        setCredentials,
-        clearCredentials,
-      }}
-    >
+    <CredentialsContext.Provider value={value}>
       {children}
     </CredentialsContext.Provider>
   );
 }
 
 export function useCredentials() {
-  const context = useContext(CredentialsContext);
-  if (context === undefined) {
-    throw new Error('useCredentials must be used within a CredentialsProvider');
-  }
-  return context;
-}
+  const context = useContext(Credentials

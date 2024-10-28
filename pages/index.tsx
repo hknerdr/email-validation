@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { useCredentials } from '../context/CredentialsContext';
 import AWSCredentialsForm from '../components/AWSCredentialsForm';
-import ValidationResults from '../components/ValidationResults'; // Changed to match your file
+import ValidationResults from '../components/ValidationResults';
 import { DomainVerificationStatus } from '../components/DomainVerificationStatus';
 import { DeliverabilityMetrics } from '../components/DeliverabilityMetrics';
 import { DKIMStatusDisplay } from '../components/DKIMStatusDisplay';
@@ -13,7 +13,7 @@ import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 
 export default function Home() {
-  const { credentials, isVerified } = useCredentials();
+  const { credentials, isVerified, setCredentials } = useCredentials();
   const [emails, setEmails] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<{
@@ -34,6 +34,21 @@ export default function Home() {
       timestamp: new Date().toLocaleTimeString()
     }]);
   }, []);
+
+  const handleCredentialsSubmit = useCallback(async (creds: {
+    accessKeyId: string;
+    secretAccessKey: string;
+    region: string;
+  }) => {
+    try {
+      await setCredentials(creds);
+      addLog('AWS credentials verified successfully', 'success');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to verify credentials';
+      setError(errorMessage);
+      addLog('Failed to verify AWS credentials', 'error');
+    }
+  }, [setCredentials, setError, addLog]);
 
   const handleValidation = async () => {
     if (!credentials || !emails.length) return;
@@ -92,7 +107,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
       <header className="bg-white/30 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <h1 className="text-3xl font-bold text-gray-900">
@@ -103,18 +117,15 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!isVerified ? (
-          <AWSCredentialsForm />
+          <AWSCredentialsForm onCredentialsSubmit={handleCredentialsSubmit} />
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Panel - Upload & Controls */}
             <div className="space-y-6">
-              {/* File Upload */}
               <div className="bg-white rounded-xl shadow-sm p-6">
                 <h2 className="text-lg font-semibold mb-4">Upload Email List</h2>
                 <FileUpload />
               </div>
 
-              {/* Validation Button */}
               <button
                 onClick={handleValidation}
                 disabled={isValidating || !emails.length}
@@ -128,7 +139,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Right Panel - Results */}
             <div className="lg:col-span-2 space-y-6">
               {isValidating && <LoadingState />}
               {validationResults && (
