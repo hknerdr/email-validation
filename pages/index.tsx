@@ -97,7 +97,8 @@ export default function Home() {
           try {
             errorData = await response.json();
           } catch (parseError) {
-            errorData = { error: 'Failed to parse error response from server.' };
+            console.error('Failed to parse error response:', parseError);
+            throw new Error('Failed to parse error response from server.');
           }
           throw new Error(errorData.error || 'Validation failed');
         }

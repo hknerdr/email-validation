@@ -34,6 +34,7 @@ export default async function validateBulk(
   res: NextApiResponse<ValidationResponse | ErrorResponse>
 ) {
   if (req.method !== 'POST') {
+    console.error(`Invalid method: ${req.method}. Only POST is allowed.`);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -44,13 +45,16 @@ export default async function validateBulk(
 
     // Validate request body
     if (!emails?.length || !credentials?.accessKeyId || !credentials?.secretAccessKey) {
+      const missing = !emails?.length ? 'No emails provided' : 'Invalid AWS credentials';
+      console.error(`Bad Request: ${missing}`);
       return res.status(400).json({ 
         error: 'Missing required fields',
-        details: !emails?.length ? 'No emails provided' : 'Invalid AWS credentials'
+        details: missing
       });
     }
 
     if (emails.length > MAX_EMAILS) {
+      console.error(`Too many emails: ${emails.length}. Maximum allowed is ${MAX_EMAILS}.`);
       return res.status(400).json({
         error: `Too many emails. Maximum allowed is ${MAX_EMAILS}.`,
       });
@@ -62,7 +66,11 @@ export default async function validateBulk(
       region: credentials.region || 'us-east-1'
     });
 
+    console.log(`Starting bulk validation for ${emails.length} emails.`);
+
     const validationResult: BulkValidationResult = await validator.validateBulk(emails);
+
+    console.log(`Bulk validation completed. Success: ${validationResult.stats.verified}, Failed: ${validationResult.stats.failed}`);
 
     return res.status(200).json({
       results: validationResult.results,
@@ -76,10 +84,15 @@ export default async function validateBulk(
     console.error('Validation failed:', error);
     const errorMessage = error instanceof Error ? error.message : 'An error occurred';
 
-    // Ensure the response is always JSON
-    return res.status(500).json({ 
-      error: 'Validation failed', 
-      details: errorMessage 
-    });
+    // Attempt to send detailed error response
+    try {
+      res.status(500).json({ 
+        error: 'Validation failed', 
+        details: errorMessage 
+      });
+    } catch (jsonError) {
+      console.error('Failed to send JSON error response:', jsonError);
+      res.status(500).end('Validation failed');
+    }
   }
 }
