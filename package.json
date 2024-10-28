@@ -13,6 +13,7 @@
     "chart.js": "^4.4.0",
     "next": "^13.0.0",
     "p-limit": "^4.0.0",
+    "p-retry": "^4.6.2", // Newly added dependency
     "postcss": "^8.0.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
