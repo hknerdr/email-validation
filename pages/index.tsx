@@ -4,7 +4,7 @@ import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import { useCredentials } from '../context/CredentialsContext';
 import AWSCredentialsForm from '../components/AWSCredentialsForm';
-import EmailValidationResults from '../components/EmailValidationResults';
+import EmailValidationResults from '../components/EmailValidationResults'; // Correct Import
 import { DeliverabilityMetrics } from '../components/DeliverabilityMetrics';
 import { DKIMStatusDisplay } from '../components/DKIMStatusDisplay';
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
@@ -22,6 +22,8 @@ export default function Home() {
     stats: ValidationStatistics;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // If you choose to use logs, keep this. Otherwise, remove it.
   const [logs, setLogs] = useState<Array<{
     message: string;
     type: 'info' | 'success' | 'error' | 'warning';
@@ -149,7 +151,7 @@ export default function Home() {
                 {isValidating && <LoadingState />}
                 {validationResults && (
                   <>
-                    <ValidationResults 
+                    <EmailValidationResults 
                       results={validationResults.results}
                       stats={validationResults.stats}
                     />
