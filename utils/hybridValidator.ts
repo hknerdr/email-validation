@@ -15,6 +15,7 @@ import type {
 } from './types';
 import { Cache } from './cache';
 import pLimit from 'p-limit';
+import dns from 'dns/promises'; // Ensure DNS is imported
 
 // Define a type for the allowed verification statuses
 type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;

@@ -1,6 +1,7 @@
 // components/FileUpload.tsx
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { parseCSV } from '../utils/csvParser'; // Added import for parseCSV
 
 interface FileUploadProps {
   className?: string;
@@ -13,11 +14,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploade
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setUploadedFiles(acceptedFiles);
     try {
-      const emails = await parseCSV(acceptedFiles[0]); // Assuming single file upload
+      const emails = await parseCSV(acceptedFiles[0]); // Now parseCSV is imported
       onEmailsUploaded(emails);
     } catch (error) {
       console.error('Error parsing CSV:', error);
-      // Optionally, handle parsing errors
+      // Optionally, handle parsing errors (e.g., display a user-friendly message)
     }
   }, [onEmailsUploaded]);
 

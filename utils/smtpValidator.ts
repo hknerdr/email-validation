@@ -2,7 +2,6 @@
 
 import { createConnection } from 'net';
 import dns from 'dns/promises';
-import { promisify } from 'util';
 import pLimit from 'p-limit';
 
 interface SMTPValidationResult {
@@ -146,7 +145,7 @@ class SMTPValidator {
         }
 
         // Send RCPT TO
-        const rcptResponse = await sendCommand(`RCPT TO:<${email}>`);
+        const rcptResponse = await sendSMTPCommand(socket, `RCPT TO:<${email}>`);
         result.smtp_response = rcptResponse;
         result.details.smtp_code = parseInt(rcptResponse.substring(0, 3));
         result.details.smtp_message = rcptResponse.substring(4);
