@@ -9,7 +9,6 @@ import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 import { useCredentials } from '../context/CredentialsContext';
-import { bouncePredictor } from '../utils/bounceRatePredictor';
 
 interface ValidationResponse {
   results: SESValidationResult[];
