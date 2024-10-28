@@ -12,6 +12,19 @@ import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 import { bouncePredictor } from '../utils/bounceRatePredictor';
 
+interface ValidationResponse {
+  results: SESValidationResult[];
+  stats: ValidationStatistics;
+  totalProcessed: number;
+  successful: number;
+  failed: number;
+}
+
+interface ErrorResponse {
+  error: string;
+  details?: string;
+}
+
 export default function Home() {
   const { credentials, isVerified, setCredentials } = useCredentials();
   const [emails, setEmails] = useState<string[]>([]);
@@ -80,7 +93,7 @@ export default function Home() {
         });
 
         if (!response.ok) {
-          let errorData: any = {};
+          let errorData: ErrorResponse = { error: 'Validation failed' };
           try {
             errorData = await response.json();
           } catch (parseError) {
@@ -89,7 +102,7 @@ export default function Home() {
           throw new Error(errorData.error || 'Validation failed');
         }
 
-        const data = await response.json();
+        const data: ValidationResponse = await response.json();
 
         allResults = allResults.concat(data.results);
         addLog(`Batch ${i + 1} validated successfully`, 'success');
