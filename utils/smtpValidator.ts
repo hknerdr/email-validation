@@ -144,8 +144,8 @@ class SMTPValidator {
           throw new Error('MAIL FROM failed');
         }
 
-        // Send RCPT TO
-        const rcptResponse = await sendSMTPCommand(socket, `RCPT TO:<${email}>`);
+        // Send RCPT TO using the instance method 'sendSMTPCommand'
+        const rcptResponse = await this.sendSMTPCommand(socket, `RCPT TO:<${email}>`);
         result.smtp_response = rcptResponse;
         result.details.smtp_code = parseInt(rcptResponse.substring(0, 3));
         result.details.smtp_message = rcptResponse.substring(4);
