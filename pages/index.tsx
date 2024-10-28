@@ -8,6 +8,7 @@ import { BounceRatePrediction } from '../components/BounceRatePrediction';
 import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
+import { useCredentials } from '../context/CredentialsContext';
 
 interface ValidationResponse {
   results: SESValidationResult[];
@@ -37,6 +38,8 @@ export default function Home() {
     timestamp: string;
   }>>([]);
 
+  const { credentials } = useCredentials();
+
   const addLog = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
     setLogs(prev => [...prev, {
       message,
@@ -46,6 +49,12 @@ export default function Home() {
   }, []);
 
   const handleValidation = async () => {
+    if (!credentials) {
+      setError('AWS Credentials are not set.');
+      addLog('AWS Credentials are not set.', 'error');
+      return;
+    }
+
     setIsValidating(true);
     setError(null);
     addLog('Starting validation process...', 'info');
@@ -54,6 +63,19 @@ export default function Home() {
     const emailBatches = batchEmails(emails, BATCH_SIZE);
     const totalBatches = emailBatches.length;
     let allResults: SESValidationResult[] = [];
+    let aggregatedStats: ValidationStatistics = {
+      total: 0,
+      verified: 0,
+      failed: 0,
+      pending: 0,
+      domains: {
+        total: 0,
+        verified: 0
+      },
+      dkim: {
+        enabled: 0
+      }
+    };
 
     try {
       for (let i = 0; i < totalBatches; i++) {
@@ -66,7 +88,8 @@ export default function Home() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ 
-            emails: batch
+            emails: batch,
+            credentials: credentials
           }),
         });
 
@@ -85,43 +108,61 @@ export default function Home() {
         const data: ValidationResponse = await response.json();
 
         allResults = allResults.concat(data.results);
+
+        // Aggregate stats
+        aggregatedStats.total += data.stats.total;
+        aggregatedStats.verified += data.stats.verified;
+        aggregatedStats.failed += data.stats.failed;
+        aggregatedStats.pending += data.stats.pending;
+        aggregatedStats.domains.total += data.stats.domains.total;
+        aggregatedStats.domains.verified += data.stats.domains.verified;
+        aggregatedStats.dkim.enabled += data.stats.dkim.enabled;
+
+        if (data.stats.deliverability) {
+          aggregatedStats.deliverability = {
+            score: (aggregatedStats.deliverability?.score || 0) + data.stats.deliverability.score,
+            predictedBounceRate: (aggregatedStats.deliverability?.predictedBounceRate || 0) + data.stats.deliverability.predictedBounceRate,
+            recommendations: [...(aggregatedStats.deliverability?.recommendations || []), ...data.stats.deliverability.recommendations]
+          };
+        }
+
         addLog(`Batch ${i + 1} validated successfully`, 'success');
+        addLog(`Found ${data.stats.verified} valid emails`, 'success');
+        if (data.stats.deliverability) {
+          addLog(`Predicted bounce rate: ${data.stats.deliverability.predictedBounceRate}%`, 'info');
+        }
       }
 
-      // After all batches are processed, perform aggregate analysis
-      const bounceMetrics = bouncePredictor.predictBounceRate(allResults);
+      // Average the deliverability scores
+      if (aggregatedStats.deliverability) {
+        aggregatedStats.deliverability.score = aggregatedStats.deliverability.score / totalBatches;
+        aggregatedStats.deliverability.predictedBounceRate = aggregatedStats.deliverability.predictedBounceRate / totalBatches;
+        // Remove duplicate recommendations
+        aggregatedStats.deliverability.recommendations = Array.from(new Set(aggregatedStats.deliverability.recommendations));
+      }
 
-      const enhancedStats: ValidationStatistics = {
-        total: allResults.length,
-        verified: allResults.filter(r => r.is_valid).length,
-        failed: allResults.filter(r => !r.is_valid).length,
-        pending: allResults.filter(r => r.verification_status === 'Pending').length,
-        domains: {
-          total: new Set(allResults.map(r => r.email.split('@')[1])).size,
-          verified: new Set(
-            allResults
-              .filter(r => r.details.domain_status.verified)
-              .map(r => r.email.split('@')[1])
-          ).size
-        },
-        dkim: {
-          enabled: allResults.filter(r => r.details.domain_status.has_dkim).length
-        },
-        deliverability: {
-          score: 100 - bounceMetrics.predictedRate,
-          predictedBounceRate: bounceMetrics.predictedRate,
-          recommendations: bounceMetrics.recommendations
-        }
-      };
+      // Calculate unique domains
+      const uniqueDomains = new Set(allResults.map(r => r.email.split('@')[1]));
+      aggregatedStats.domains.total = uniqueDomains.size;
+
+      // Calculate verified domains
+      const verifiedDomains = new Set(
+        allResults
+          .filter(r => r.details.domain_status.verified)
+          .map(r => r.email.split('@')[1])
+      );
+      aggregatedStats.domains.verified = verifiedDomains.size;
 
       setValidationResults({
         results: allResults,
-        stats: enhancedStats
+        stats: aggregatedStats
       });
 
       addLog(`All batches validated successfully`, 'success');
-      addLog(`Found ${allResults.filter(r => r.is_valid).length} valid emails`, 'success');
-      addLog(`Predicted bounce rate: ${bounceMetrics.predictedRate}%`, 'info');
+      addLog(`Total valid emails: ${aggregatedStats.verified}`, 'success');
+      if (aggregatedStats.deliverability) {
+        addLog(`Overall predicted bounce rate: ${aggregatedStats.deliverability.predictedBounceRate.toFixed(2)}%`, 'info');
+      }
 
     } catch (error) {
       setError(error instanceof Error ? error.message : 'An error occurred');
@@ -177,10 +218,12 @@ export default function Home() {
                     results={validationResults.results}
                     stats={validationResults.stats}
                   />
-                  <BounceRatePrediction
-                    predictedRate={validationResults.stats.deliverability?.predictedBounceRate || 0}
-                    totalEmails={validationResults.stats.total}
-                  />
+                  {validationResults.stats.deliverability && (
+                    <BounceRatePrediction
+                      predictedRate={validationResults.stats.deliverability.predictedBounceRate}
+                      totalEmails={validationResults.stats.total}
+                    />
+                  )}
                 </>
               )}
               {error && (
