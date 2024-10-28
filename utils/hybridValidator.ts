@@ -3,7 +3,9 @@ import {
   SESClient, 
   GetIdentityVerificationAttributesCommand, 
   ListIdentitiesCommand,
-  VerificationStatus 
+  VerificationStatus,
+  IdentityVerificationAttributes,
+  DkimAttributes as AWSDkimAttributes
 } from "@aws-sdk/client-ses";
 import { smtpValidator } from './smtpValidator';
 import { bouncePredictor } from './bounceRatePredictor';
@@ -24,44 +26,6 @@ export class HybridValidator {
         secretAccessKey: credentials.secretAccessKey
       }
     });
-  }
-
-  private async checkDNSRecords(domain: string): Promise<{
-    hasMX: boolean;
-    hasSPF: boolean;
-    hasDMARC: boolean;
-  }> {
-    try {
-      // Check both MX and TXT records in parallel
-      const [mxRecords, txtRecords] = await Promise.all([
-        dns.resolveMx(domain),
-        dns.resolveTxt(domain)
-      ]);
-
-      // Check for SPF record in TXT records
-      const hasSPF = txtRecords.some(records => 
-        records.some(record => record.startsWith('v=spf1'))
-      );
-
-      // Check for DMARC record
-      let hasDMARC = false;
-      try {
-        const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
-        hasDMARC = dmarcRecords.some(records =>
-          records.some(record => record.startsWith('v=DMARC1'))
-        );
-      } catch {
-        hasDMARC = false;
-      }
-
-      return {
-        hasMX: mxRecords.length > 0,
-        hasSPF,
-        hasDMARC
-      };
-    } catch {
-      return { hasMX: false, hasSPF: false, hasDMARC: false };
-    }
   }
 
   private mapVerificationStatus(status: VerificationStatus | undefined): SESVerificationStatus {
@@ -87,11 +51,13 @@ export class HybridValidator {
         const domainAttrs = response.VerificationAttributes[domain];
         const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
 
+        const dkimAttrs = (domainAttrs as any).DkimAttributes as AWSDkimAttributes | undefined;
+
         return {
           verificationStatus: status,
-          dkimAttributes: domainAttrs.DkimAttributes ? {
-            status: this.mapVerificationStatus(domainAttrs.DkimAttributes.Status),
-            tokens: domainAttrs.DkimAttributes.DkimTokens || []
+          dkimAttributes: dkimAttrs ? {
+            status: this.mapVerificationStatus(dkimAttrs.DkimStatus),
+            tokens: dkimAttrs.DkimTokens || []
           } : undefined
         };
       }
@@ -100,6 +66,41 @@ export class HybridValidator {
     } catch (error) {
       console.error('Error getting domain verification status:', error);
       return null;
+    }
+  }
+
+  private async checkDNSRecords(domain: string): Promise<{
+    hasMX: boolean;
+    hasSPF: boolean;
+    hasDMARC: boolean;
+  }> {
+    try {
+      const [mxRecords, txtRecords] = await Promise.all([
+        dns.resolveMx(domain),
+        dns.resolveTxt(domain)
+      ]);
+
+      const hasSPF = txtRecords.some(records => 
+        records.some(record => record.startsWith('v=spf1'))
+      );
+
+      let hasDMARC = false;
+      try {
+        const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
+        hasDMARC = dmarcRecords.some(records =>
+          records.some(record => record.startsWith('v=DMARC1'))
+        );
+      } catch {
+        hasDMARC = false;
+      }
+
+      return {
+        hasMX: mxRecords.length > 0,
+        hasSPF,
+        hasDMARC
+      };
+    } catch {
+      return { hasMX: false, hasSPF: false, hasDMARC: false };
     }
   }
 
@@ -137,13 +138,6 @@ export class HybridValidator {
         }
       }
     };
-  }
-
-  private determineFailureReason(smtpResult: any, dnsResults: any): string {
-    if (!dnsResults.hasMX) return 'No MX records found';
-    if (smtpResult.is_catch_all) return 'Catch-all domain detected';
-    if (!smtpResult.is_valid) return smtpResult.smtp_response || 'SMTP validation failed';
-    return 'Multiple validation checks failed';
   }
 
   public async validateEmail(email: string): Promise<SESValidationResult> {
@@ -184,6 +178,13 @@ export class HybridValidator {
     };
   }
 
+  private determineFailureReason(smtpResult: any, dnsResults: any): string {
+    if (!dnsResults.hasMX) return 'No MX records found';
+    if (smtpResult.is_catch_all) return 'Catch-all domain detected';
+    if (!smtpResult.is_valid) return smtpResult.smtp_response || 'SMTP validation failed';
+    return 'Multiple validation checks failed';
+  }
+
   public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
     const batchSize = 50;
     const allResults: SESValidationResult[] = [];
@@ -203,7 +204,6 @@ export class HybridValidator {
       );
       allResults.push(...batchResults);
 
-      // Add delay between batches to avoid rate limits
       if (i + batchSize < emails.length) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
