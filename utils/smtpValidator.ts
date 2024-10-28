@@ -1,6 +1,5 @@
-// utils/smtpValidator.ts
 import { createConnection } from 'net';
-import { DnsPromises as dns } from 'dns';
+import dns from 'dns/promises';
 import { promisify } from 'util';
 
 interface SMTPValidationResult {
