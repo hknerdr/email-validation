@@ -131,7 +131,7 @@ export default function Home() {
               <div className="space-y-6">
                 <div className="bg-white rounded-xl shadow-sm p-6">
                   <h2 className="text-lg font-semibold mb-4">Upload Email List</h2>
-                  <FileUpload onEmailsUploaded={setEmails} />
+                  <FileUpload onEmailsUploaded={setEmails} /> {/* Correct Usage */}
                 </div>
 
                 <button

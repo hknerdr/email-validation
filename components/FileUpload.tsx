@@ -1,13 +1,12 @@
 // components/FileUpload.tsx
 import React, { useCallback, useState } from 'react';
-import { useAppContext } from '../context/AppContext';
 
 interface FileUploadProps {
   className?: string;
+  onEmailsUploaded: (emails: string[]) => void;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ className = '' }) => {
-  const { dispatch } = useAppContext();
+const FileUpload: React.FC<FileUploadProps> = ({ className = '', onEmailsUploaded }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const processFile = useCallback(async (file: File) => {
@@ -18,14 +17,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ className = '' }) => {
         .map(email => email.trim())
         .filter(email => email && email.includes('@'));
 
-      dispatch({ type: 'SET_EMAILS', payload: emails });
+      onEmailsUploaded(emails);
     } catch (error) {
-      dispatch({ 
-        type: 'SET_ERROR', 
-        payload: error instanceof Error ? error.message : 'Error processing file' 
-      });
+      console.error(error);
+      // Optionally, you can pass error information back via another prop
     }
-  }, [dispatch]);
+  }, [onEmailsUploaded]);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
