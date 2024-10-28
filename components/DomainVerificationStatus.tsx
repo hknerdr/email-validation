@@ -8,46 +8,58 @@ interface Props {
 }
 
 export const DomainVerificationStatus: React.FC<Props> = ({ domain, results }) => {
-  const dkimEnabled = results.some(r => r.details.domain_status.has_dkim);
-  const spfEnabled = results.some(r => r.details.domain_status.has_spf);
-  const dmarcStatus = results[0]?.details.domain_status.dmarc_status;
+  const totalEmails = results.length;
+  const validEmails = results.filter(r => r.is_valid).length;
+  const verificationStatus = results[0]?.details.domain_status.verified;
+  const hasDKIM = results[0]?.details.domain_status.has_dkim;
+  const hasSPF = results[0]?.details.domain_status.has_spf;
 
   return (
-    <div className="bg-gray-50 rounded-lg p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
+      <div className="flex items-center justify-between">
         <h4 className="text-lg font-medium text-gray-900">{domain}</h4>
-        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-          dkimEnabled && spfEnabled ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-        }`}>
-          {dkimEnabled && spfEnabled ? 'Fully Verified' : 'Incomplete'}
+        <span
+          className={`px-2 py-1 text-sm rounded-full ${
+            verificationStatus
+              ? 'bg-green-100 text-green-800'
+              : 'bg-yellow-100 text-yellow-800'
+          }`}
+        >
+          {verificationStatus ? 'Verified' : 'Unverified'}
         </span>
       </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="flex items-center space-x-2">
-          <div className={`w-2 h-2 rounded-full ${dkimEnabled ? 'bg-green-400' : 'bg-red-400'}`} />
-          <span className="text-sm text-gray-600">DKIM</span>
+      
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-sm text-gray-500">Emails</p>
+          <p className="text-lg font-semibold">
+            {validEmails}/{totalEmails}
+          </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className={`w-2 h-2 rounded-full ${spfEnabled ? 'bg-green-400' : 'bg-red-400'}`} />
-          <span className="text-sm text-gray-600">SPF</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <div className={`w-2 h-2 rounded-full ${dmarcStatus === 'pass' ? 'bg-green-400' : 'bg-yellow-400'}`} />
-          <span className="text-sm text-gray-600">DMARC</span>
+        <div>
+          <p className="text-sm text-gray-500">Authentication</p>
+          <div className="flex space-x-2 mt-1">
+            <span
+              className={`px-2 py-1 text-xs rounded ${
+                hasDKIM
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              DKIM
+            </span>
+            <span
+              className={`px-2 py-1 text-xs rounded ${
+                hasSPF
+                  ? 'bg-green-100 text-green-800'
+                  : 'bg-red-100 text-red-800'
+              }`}
+            >
+              SPF
+            </span>
+          </div>
         </div>
       </div>
-
-      {(!dkimEnabled || !spfEnabled) && (
-        <div className="mt-4 text-sm text-yellow-700 bg-yellow-50 rounded p-3">
-          <strong>Recommendations:</strong>
-          <ul className="list-disc list-inside mt-1">
-            {!dkimEnabled && <li>Set up DKIM authentication</li>}
-            {!spfEnabled && <li>Configure SPF records</li>}
-            {dmarcStatus !== 'pass' && <li>Implement DMARC policy</li>}
-          </ul>
-        </div>
-      )}
     </div>
   );
 };

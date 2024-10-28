@@ -9,12 +9,13 @@ export const config = {
       sizeLimit: '4mb',
     },
     responseLimit: false,
+    externalResolver: true,
   },
 };
 
-export default async function handler(
+export default async function validateBulk(
   req: NextApiRequest,
-  res: NextApiResponse<BulkValidationResult | { error: string }>
+  res: NextApiResponse
 ) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -23,47 +24,35 @@ export default async function handler(
   try {
     const { emails, credentials } = req.body;
 
-    if (!Array.isArray(emails) || emails.length === 0) {
-      return res.status(400).json({ error: 'No emails provided or invalid format' });
+    if (!emails?.length || !credentials?.accessKeyId || !credentials?.secretAccessKey) {
+      return res.status(400).json({ 
+        error: 'Missing required fields',
+        details: !emails?.length ? 'No emails provided' : 'Invalid AWS credentials'
+      });
     }
 
-    if (!credentials?.accessKeyId || !credentials?.secretAccessKey || !credentials?.region) {
-      return res.status(400).json({ error: 'AWS credentials are required' });
-    }
-
-    // Create validator instance with credentials from request
     const validator = createHybridValidator({
       accessKeyId: credentials.accessKeyId,
       secretAccessKey: credentials.secretAccessKey,
-      region: credentials.region
+      region: credentials.region || 'us-east-1'
     });
 
-    // Validate emails
-    const validationResults = await validator.validateBulk(emails);
+    const validationResult = await validator.validateBulk(emails);
 
     return res.status(200).json({
-      results: validationResults.results,
-      stats: {
-        total: validationResults.totalProcessed,
-        verified: validationResults.successful,
-        failed: validationResults.failed,
-        pending: 0,
-        domains: {
-          total: new Set(validationResults.results.map(r => r.email.split('@')[1])).size,
-          verified: new Set(validationResults.results
-            .filter(r => r.details.domain_status.verified)
-            .map(r => r.email.split('@')[1])).size
-        },
-        dkim: {
-          enabled: validationResults.results.filter(r => r.details.domain_status.has_dkim).length
-        }
-      }
+      results: validationResult.results,
+      stats: validationResult.stats,
+      totalProcessed: validationResult.results.length,
+      successful: validationResult.results.filter(r => r.is_valid).length,
+      failed: validationResult.results.filter(r => !r.is_valid).length
     });
 
   } catch (error) {
-    console.error('Validation error:', error);
-    return res.status(500).json({
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    console.error('Validation failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return res.status(500).json({ 
+      error: 'Validation failed', 
+      details: errorMessage 
     });
   }
 }

@@ -1,6 +1,9 @@
 // utils/hybridValidator.ts
 import { SESClient, GetIdentityVerificationAttributesCommand, ListIdentitiesCommand } from "@aws-sdk/client-ses";
-import type { SESValidationResult } from './types';
+import { smtpValidator } from './smtpValidator';
+import { bouncePredictor } from './bounceRatePredictor';
+import type { SESValidationResult, BulkValidationResult } from './types';
+import dns from 'dns/promises';
 
 export class HybridValidator {
   private sesClient: SESClient;
@@ -15,21 +18,42 @@ export class HybridValidator {
     });
   }
 
-  private async checkDomainVerification(domain: string): Promise<boolean> {
+  private async checkDNSRecords(domain: string): Promise<{
+    hasMX: boolean;
+    hasSPF: boolean;
+    hasDMARC: boolean;
+  }> {
     try {
-      const command = new GetIdentityVerificationAttributesCommand({
-        Identities: [domain]
-      });
-      const response = await this.sesClient.send(command);
-      const attributes = response.VerificationAttributes?.[domain];
-      return attributes?.VerificationStatus === 'Success';
+      const [mxRecords, txtRecords] = await Promise.all([
+        dns.resolveMx(domain),
+        dns.resolveTxt(domain)
+      ]);
+
+      const hasSPF = txtRecords.some(records => 
+        records.some(record => record.startsWith('v=spf1'))
+      );
+
+      let hasDMARC = false;
+      try {
+        const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
+        hasDMARC = dmarcRecords.some(records =>
+          records.some(record => record.startsWith('v=DMARC1'))
+        );
+      } catch {
+        hasDMARC = false;
+      }
+
+      return {
+        hasMX: mxRecords.length > 0,
+        hasSPF,
+        hasDMARC
+      };
     } catch {
-      return false;
+      return { hasMX: false, hasSPF: false, hasDMARC: false };
     }
   }
 
   private async validateEmailFormat(email: string): Promise<SESValidationResult> {
-    // Basic format validation
     const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
     const isValidFormat = emailRegex.test(email);
 
@@ -37,8 +61,8 @@ export class HybridValidator {
       return {
         email,
         is_valid: false,
-        reason: 'Invalid email format',
         verification_status: 'Failed',
+        reason: 'Invalid email format',
         details: {
           domain_status: {
             verified: false,
@@ -57,7 +81,7 @@ export class HybridValidator {
       details: {
         domain_status: {
           verified: false,
-          has_mx_records: true,
+          has_mx_records: false,
           has_dkim: false,
           has_spf: false
         }
@@ -66,41 +90,59 @@ export class HybridValidator {
   }
 
   public async validateEmail(email: string): Promise<SESValidationResult> {
-    // First check format
+    // Step 1: Format validation
     const formatResult = await this.validateEmailFormat(email);
     if (!formatResult.is_valid) {
       return formatResult;
     }
 
-    // Extract domain
     const domain = email.split('@')[1];
 
-    // Check domain verification
-    const isDomainVerified = await this.checkDomainVerification(domain);
+    // Step 2: DNS checks
+    const dnsResults = await this.checkDNSRecords(domain);
+    
+    // Step 3: SMTP validation
+    const smtpResult = await smtpValidator.validateEmail(email);
+
+    // Step 4: SES domain verification check
+    const sesVerification = await this.getDomainVerificationStatus(domain);
+
+    // Combine all results
+    const isValid = smtpResult.is_valid && dnsResults.hasMX && !smtpResult.is_catch_all;
 
     return {
-      ...formatResult,
-      is_valid: isDomainVerified,
-      verification_status: isDomainVerified ? 'Success' : 'Failed',
+      email,
+      is_valid: isValid,
+      verification_status: isValid ? 'Success' : 'Failed',
+      reason: !isValid ? this.determineFailureReason(smtpResult, dnsResults) : undefined,
       details: {
-        ...formatResult.details,
         domain_status: {
-          ...formatResult.details.domain_status,
-          verified: isDomainVerified
+          verified: sesVerification?.VerificationStatus === 'Success',
+          has_mx_records: dnsResults.hasMX,
+          has_dkim: sesVerification?.DkimAttributes?.Status === 'Success',
+          has_spf: dnsResults.hasSPF,
+          dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
         }
       }
     };
   }
 
-  public async validateBulk(emails: string[]): Promise<{
-    results: SESValidationResult[];
-    totalProcessed: number;
-    successful: number;
-    failed: number;
-  }> {
-    // Process in batches to avoid rate limits
-    const batchSize = 100;
+  private determineFailureReason(smtpResult: any, dnsResults: any): string {
+    if (!dnsResults.hasMX) return 'No MX records found';
+    if (smtpResult.is_catch_all) return 'Catch-all domain detected';
+    if (!smtpResult.is_valid) return smtpResult.smtp_response || 'SMTP validation failed';
+    return 'Multiple validation checks failed';
+  }
+
+  public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
+    const batchSize = 50;
     const allResults: SESValidationResult[] = [];
+    const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
+
+    // Pre-fetch domain verifications for all unique domains
+    const domainVerifications = await Promise.all(
+      Array.from(uniqueDomains).map(domain => this.getDomainVerificationStatus(domain))
+    );
 
     for (let i = 0; i < emails.length; i += batchSize) {
       const batch = emails.slice(i, i + batchSize);
@@ -109,48 +151,54 @@ export class HybridValidator {
       );
       allResults.push(...batchResults);
 
-      // Add delay between batches
       if (i + batchSize < emails.length) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
+    // Calculate statistics
+    const stats = this.calculateStats(allResults);
+    
+    // Predict bounce rate
+    const bounceMetrics = bouncePredictor.predictBounceRate(allResults);
+    stats.deliverability = {
+      score: 100 - bounceMetrics.predictedRate,
+      predictedBounceRate: bounceMetrics.predictedRate,
+      recommendations: bounceMetrics.recommendations
+    };
+
     return {
       results: allResults,
-      totalProcessed: allResults.length,
-      successful: allResults.filter(r => r.is_valid).length,
-      failed: allResults.filter(r => !r.is_valid).length
+      stats
     };
   }
 
-  public async getDomainVerificationStatus(domain: string) {
-    try {
-      const command = new GetIdentityVerificationAttributesCommand({
-        Identities: [domain]
-      });
-      const response = await this.sesClient.send(command);
-      return response.VerificationAttributes?.[domain];
-    } catch (error) {
-      console.error('Error getting domain verification status:', error);
-      return null;
-    }
+  private calculateStats(results: SESValidationResult[]): ValidationStatistics {
+    const domains = new Set(results.map(r => r.email.split('@')[1]));
+    const verifiedDomains = new Set(
+      results
+        .filter(r => r.details.domain_status.verified)
+        .map(r => r.email.split('@')[1])
+    );
+
+    return {
+      total: results.length,
+      verified: results.filter(r => r.is_valid).length,
+      failed: results.filter(r => !r.is_valid).length,
+      pending: results.filter(r => r.verification_status === 'Pending').length,
+      domains: {
+        total: domains.size,
+        verified: verifiedDomains.size
+      },
+      dkim: {
+        enabled: results.filter(r => r.details.domain_status.has_dkim).length
+      }
+    };
   }
 
-  public async listVerifiedDomains() {
-    try {
-      const command = new ListIdentitiesCommand({
-        IdentityType: 'Domain'
-      });
-      const response = await this.sesClient.send(command);
-      return response.Identities || [];
-    } catch (error) {
-      console.error('Error listing verified domains:', error);
-      return [];
-    }
-  }
+  // ... (keep existing getDomainVerificationStatus and listVerifiedDomains methods)
 }
 
-// Export a factory function to create validator instances
 export const createHybridValidator = (credentials: { 
   accessKeyId: string; 
   secretAccessKey: string; 

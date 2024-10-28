@@ -1,35 +1,63 @@
 // context/CredentialsContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-interface Credentials {
+interface AWSCredentials {
   accessKeyId: string;
   secretAccessKey: string;
   region: string;
 }
 
 interface CredentialsContextType {
-  credentials: Credentials | null;
-  setCredentials: (credentials: Credentials | null) => void;
+  credentials: AWSCredentials | null;
   isVerified: boolean;
+  setCredentials: (creds: AWSCredentials) => Promise<boolean>;
+  clearCredentials: () => void;
 }
 
 const CredentialsContext = createContext<CredentialsContextType | undefined>(undefined);
 
-export function CredentialsProvider({ children }: { children: React.ReactNode }) {
-  const [credentials, setCredentials] = useState<Credentials | null>(null);
+export function CredentialsProvider({ children }: { children: ReactNode }) {
+  const [credentials, setCredentialsState] = useState<AWSCredentials | null>(null);
   const [isVerified, setIsVerified] = useState(false);
 
-  const handleSetCredentials = (newCredentials: Credentials | null) => {
-    setCredentials(newCredentials);
-    setIsVerified(!!newCredentials);
-  };
+  const setCredentials = useCallback(async (creds: AWSCredentials) => {
+    try {
+      const response = await fetch('/api/ses-credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(creds),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setCredentialsState(creds);
+        setIsVerified(true);
+        return true;
+      } else {
+        throw new Error(data.error || 'Failed to verify credentials');
+      }
+    } catch (error) {
+      setCredentialsState(null);
+      setIsVerified(false);
+      throw error;
+    }
+  }, []);
+
+  const clearCredentials = useCallback(() => {
+    setCredentialsState(null);
+    setIsVerified(false);
+  }, []);
 
   return (
-    <CredentialsContext.Provider 
-      value={{ 
-        credentials, 
-        setCredentials: handleSetCredentials,
-        isVerified
+    <CredentialsContext.Provider
+      value={{
+        credentials,
+        isVerified,
+        setCredentials,
+        clearCredentials,
       }}
     >
       {children}

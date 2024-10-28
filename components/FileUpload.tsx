@@ -1,130 +1,95 @@
-import React, { useState, useCallback } from 'react';
+// components/FileUpload.tsx
+import React, { useCallback, useState } from 'react';
 import { useAppContext } from '../context/AppContext';
 
-const FileUpload = () => {
-  const { state, dispatch } = useAppContext();
-  const [file, setFile] = useState<File | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+const FileUpload: React.FC = () => {
+  const { dispatch } = useAppContext();
+  const [isDragging, setIsDragging] = useState(false);
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-  };
-
-  const parseCSVContent = useCallback((content: string): string[] => {
-    return content
-      .split(/[\r\n]+/)
-      .map(line => line.trim())
-      .filter(line => line && validateEmail(line));
-  }, []);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
-        dispatch({ type: 'SET_ERROR', payload: 'Please select a CSV file' });
-        return;
-      }
-      setFile(selectedFile);
-      dispatch({ type: 'SET_ERROR', payload: null });
-      setMessage(null);
-    }
-  };
-
-  const handleFileUpload = async () => {
-    if (!file) {
-      dispatch({ type: 'SET_ERROR', payload: 'Please select a file first' });
-      return;
-    }
-
-    setIsProcessing(true);
-    dispatch({ type: 'SET_ERROR', payload: null });
-    setMessage(null);
-
+  const processFile = useCallback(async (file: File) => {
     try {
-      const reader = new FileReader();
+      const text = await file.text();
+      const emails = text
+        .split(/[\n,]/)
+        .map(email => email.trim())
+        .filter(email => email && email.includes('@'));
 
-      reader.onload = async (event) => {
-        try {
-          const content = event.target?.result as string;
-          if (!content) {
-            throw new Error('Could not read file content');
-          }
-
-          const emails = parseCSVContent(content);
-
-          if (emails.length === 0) {
-            throw new Error('No valid email addresses found in the file');
-          }
-
-          // Update state with the parsed emails
-          dispatch({ type: 'SET_EMAILS', payload: emails });
-          setMessage(`Successfully loaded ${emails.length} email${emails.length > 1 ? 's' : ''}`);
-        } catch (error) {
-          dispatch({
-            type: 'SET_ERROR',
-            payload: error instanceof Error ? error.message : 'Failed to process the file'
-          });
-          dispatch({ type: 'SET_EMAILS', payload: [] });
-        } finally {
-          setIsProcessing(false);
-        }
-      };
-
-      reader.onerror = () => {
-        dispatch({ type: 'SET_ERROR', payload: 'Error reading the file' });
-        setIsProcessing(false);
-      };
-
-      reader.readAsText(file);
+      dispatch({ type: 'SET_EMAILS', payload: emails });
     } catch (error) {
-      dispatch({
-        type: 'SET_ERROR',
-        payload: error instanceof Error ? error.message : 'Failed to process the file'
-      });
-      setIsProcessing(false);
+      console.error('Error processing file:', error);
     }
-  };
+  }, [dispatch]);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      processFile(file);
+    }
+  }, [processFile]);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processFile(file);
+    }
+  }, [processFile]);
 
   return (
-    <div>
-      <div style={{ marginBottom: '1rem' }}>
-        <input
-          type="file"
-          accept=".csv"
-          onChange={handleFileChange}
-          style={{ marginRight: '1rem' }}
-          disabled={isProcessing}
-        />
-        <button
-          onClick={handleFileUpload}
-          disabled={!file || isProcessing}
-          style={{
-            padding: '0.5rem 1rem',
-            backgroundColor: !file || isProcessing ? '#ccc' : '#4CAF50',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: !file || isProcessing ? 'not-allowed' : 'pointer'
-          }}
+    <div
+      onDragOver={e => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={() => setIsDragging(false)}
+      onDrop={handleDrop}
+      className={`
+        border-2 border-dashed rounded-lg p-8 text-center
+        transition-all duration-200 ease-in-out
+        ${isDragging
+          ? 'border-blue-500 bg-blue-50'
+          : 'border-gray-300 hover:border-gray-400'
+        }
+      `}
+    >
+      <div className="space-y-4">
+        <svg
+          className="mx-auto h-12 w-12 text-gray-400"
+          stroke="currentColor"
+          fill="none"
+          viewBox="0 0 48 48"
+          aria-hidden="true"
         >
-          {isProcessing ? 'Processing...' : 'Upload Emails'}
-        </button>
+          <path
+            d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <div className="text-gray-600">
+          <label
+            htmlFor="file-upload"
+            className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500"
+          >
+            <span>Upload a file</span>
+            <input
+              id="file-upload"
+              name="file-upload"
+              type="file"
+              className="sr-only"
+              accept=".txt,.csv"
+              onChange={handleFileInput}
+            />
+          </label>
+          <p className="pl-1">or drag and drop</p>
+        </div>
+        <p className="text-xs text-gray-500">
+          TXT or CSV files with one email per line
+        </p>
       </div>
-      {file && (
-        <div style={{ fontSize: '0.875rem', color: '#666' }}>
-          Selected file: {file.name}
-        </div>
-      )}
-      {message && (
-        <div style={{ marginTop: '1rem', color: '#4CAF50' }}>
-          {message}
-        </div>
-      )}
-      {state.error && (
-        <div style={{ color: 'red', marginTop: '1rem' }}>{state.error}</div>
-      )}
     </div>
   );
 };
