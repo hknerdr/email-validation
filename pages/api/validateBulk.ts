@@ -63,7 +63,7 @@ export default async function validateBulk(
     const validator = createHybridValidator({
       accessKeyId: credentials.accessKeyId,
       secretAccessKey: credentials.secretAccessKey,
-      region: credentials.region || 'us-east-1'
+      region: credentials.region || 'us-east-1' // Ensure correct region
     });
 
     console.log(`Starting bulk validation for ${emails.length} emails.`);

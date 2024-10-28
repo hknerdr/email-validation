@@ -16,7 +16,7 @@ import type {
 import { Cache } from './cache';
 import pLimit from 'p-limit';
 import dns from 'dns/promises';
-import pRetry from 'p-retry'; // Install p-retry: npm install p-retry
+import pRetry, { AbortError } from 'p-retry'; // Ensure p-retry is installed
 
 // Define a type for the allowed verification statuses
 type SESVerificationStatus = Extract<VerificationStatus, 'Success' | 'Failed' | 'Pending' | 'NotStarted'>;
@@ -62,6 +62,7 @@ export class HybridValidator {
     // Check cache first
     const cached = this.domainVerificationCache.get(domain);
     if (cached) {
+      console.log(`Cache hit for domain: ${domain}`);
       return cached;
     }
 
@@ -74,9 +75,13 @@ export class HybridValidator {
 
         const response = await this.sesClient.send(command);
 
+        console.log(`SES response for domain ${domain}:`, JSON.stringify(response, null, 2));
+
         if (response.VerificationAttributes && response.VerificationAttributes[domain]) {
           const domainAttrs = response.VerificationAttributes[domain];
           const status = this.mapVerificationStatus(domainAttrs.VerificationStatus);
+          
+          console.log(`Domain ${domain} verification status: ${status}`);
 
           const dkimAttrs = (domainAttrs as any).DkimAttributes as DkimAttributes | undefined;
 
@@ -91,11 +96,17 @@ export class HybridValidator {
           return verificationAttributes;
         }
 
-        throw new Error('Domain verification attributes not found.');
+        // If attributes not found, abort retries
+        throw new AbortError('Domain verification attributes not found.');
       }, {
         retries: 5,
         onFailedAttempt: error => {
-          console.warn(`Attempt ${error.attemptNumber} failed. There are ${error.retriesLeft} retries left.`, error);
+          if (error instanceof AbortError) {
+            // Do not retry on AbortError
+            console.warn(`Aborting retries for domain ${domain}: ${error.message}`);
+          } else {
+            console.warn(`Attempt ${error.attemptNumber} failed for domain ${domain}. Retries left: ${error.retriesLeft}. Error: ${error.message}`);
+          }
         },
         factor: 2,
         minTimeout: 1000,
@@ -105,11 +116,19 @@ export class HybridValidator {
 
       // Cache the result
       this.domainVerificationCache.set(domain, verificationAttributes);
+      console.log(`Cached verification attributes for domain: ${domain}`);
 
       return verificationAttributes;
     } catch (error) {
-      console.error(`Error getting domain verification status for ${domain}:`, error);
-      return null;
+      if (error instanceof AbortError) {
+        // Attributes not found, return null without retrying
+        console.info(`Domain ${domain} is not verified.`);
+        return null;
+      } else {
+        // Log and return null for other errors
+        console.error(`Error getting domain verification status for ${domain}:`, error);
+        return null;
+      }
     }
   }
 
