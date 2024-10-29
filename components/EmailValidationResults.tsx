@@ -2,8 +2,7 @@
 import React from 'react';
 import { DomainVerificationStatus } from './DomainVerificationStatus';
 import { DeliverabilityMetrics } from './DeliverabilityMetrics';
-import { BounceRatePrediction } from './BounceRatePrediction';
-import type { SESValidationResult } from '../utils/types';
+import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 
 interface Props {
   results: SESValidationResult[];
@@ -15,35 +14,35 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
 
   return (
     <div className="space-y-6">
-      {/* Overall Stats */}
+      {/* Genel İstatistik Kartları */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl shadow-sm p-6">
-          <h3 className="text-sm font-medium text-gray-500">Total Processed</h3>
+          <h3 className="text-sm font-medium text-gray-500">Toplam İşlenen</h3>
           <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
         </div>
         
         <div className="bg-green-50 rounded-xl shadow-sm p-6">
-          <h3 className="text-sm font-medium text-green-600">Verified</h3>
+          <h3 className="text-sm font-medium text-green-600">Doğrulandı</h3>
           <p className="text-3xl font-bold text-green-700 mt-2">{stats.verified}</p>
         </div>
         
         <div className="bg-red-50 rounded-xl shadow-sm p-6">
-          <h3 className="text-sm font-medium text-red-600">Failed</h3>
+          <h3 className="text-sm font-medium text-red-600">Başarısız</h3>
           <p className="text-3xl font-bold text-red-700 mt-2">{stats.failed}</p>
         </div>
         
         <div className="bg-yellow-50 rounded-xl shadow-sm p-6">
-          <h3 className="text-sm font-medium text-yellow-600">Domains</h3>
+          <h3 className="text-sm font-medium text-yellow-600">Domainler</h3>
           <p className="text-3xl font-bold text-yellow-700 mt-2">{stats.domains.total}</p>
           <p className="text-sm text-yellow-600 mt-1">
-            {stats.domains.verified} verified
+            {stats.domains.verified} doğrulandı
           </p>
         </div>
       </div>
 
-      {/* Domain Status */}
+      {/* Domain Durumları */}
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">Domain Verification Status</h3>
+        <h3 className="text-lg font-semibold mb-4">Domain Doğrulama Durumu</h3>
         <div className="space-y-4">
           {domains.map(domain => (
             <DomainVerificationStatus
@@ -55,7 +54,7 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
         </div>
       </div>
 
-      {/* Deliverability Score */}
+      {/* Deliverability Skoru */}
       {stats.deliverability && (
         <DeliverabilityMetrics 
           score={stats.deliverability.score}
@@ -63,7 +62,7 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
         />
       )}
 
-      {/* Detailed Results Table */}
+      {/* Detaylı Sonuçlar Tablosu */}
       <div className="bg-white rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -73,31 +72,31 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Email
+                  E-posta
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Status
+                  Durum
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  MX Records
+                  MX Kayıtları
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  SMTP Validation
+                  SMTP Doğrulama
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Details
+                  Detaylar
                 </th>
               </tr>
             </thead>
@@ -114,27 +113,27 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
                           ? 'bg-green-100 text-green-800'
                           : 'bg-red-100 text-red-800'
                       }`}
-                      aria-label={`Verification status: ${result.is_valid ? 'Valid' : 'Invalid'}`}
+                      aria-label={`Doğrulama durumu: ${result.is_valid ? 'Geçerli' : 'Geçersiz'}`}
                     >
-                      {result.is_valid ? 'Valid' : 'Invalid'}
+                      {result.is_valid ? 'Geçerli' : 'Geçersiz'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {result.details.domain_status.has_mx_records ? (
-                      <span className="text-green-600" aria-label="MX Records Present">✓</span>
+                      <span className="text-green-600" aria-label="MX Kayıtları Mevcut">✓</span>
                     ) : (
-                      <span className="text-red-600" aria-label="MX Records Missing">✗</span>
+                      <span className="text-red-600" aria-label="MX Kayıtları Eksik">✗</span>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {result.details.recipient_accepted ? (
-                      <span className="text-green-600" aria-label="SMTP Validation Passed">✓</span>
+                      <span className="text-green-600" aria-label="SMTP Doğrulama Başarılı">✓</span>
                     ) : (
-                      <span className="text-red-600" aria-label="SMTP Validation Failed">✗</span>
+                      <span className="text-red-600" aria-label="SMTP Doğrulama Başarısız">✗</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
-                    {result.reason || 'No issues found'}
+                    {result.reason || 'Sorun bulunmadı'}
                   </td>
                 </tr>
               ))}
@@ -143,18 +142,18 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
         </div>
       </div>
 
-      {/* Export Button */}
+      {/* Export Butonu */}
       <div className="flex justify-end">
         <button
           onClick={() => {
             const csv = [
-              ['Email', 'Status', 'MX Records', 'SMTP Validation', 'Details'],
+              ['E-posta', 'Durum', 'MX Kayıtları', 'SMTP Doğrulama', 'Detaylar'],
               ...results.map(r => [
                 r.email,
-                r.is_valid ? 'Valid' : 'Invalid',
+                r.is_valid ? 'Geçerli' : 'Geçersiz',
                 r.details.domain_status.has_mx_records ? '✓' : '✗',
                 r.details.recipient_accepted ? '✓' : '✗',
-                r.reason || 'No issues found'
+                r.reason || 'Sorun bulunmadı'
               ])
             ].map(row => row.join(',')).join('\n');
 
@@ -163,14 +162,14 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
             const a = document.createElement('a');
             a.setAttribute('hidden', '');
             a.setAttribute('href', url);
-            a.setAttribute('download', 'validation-results.csv');
+            a.setAttribute('download', 'doğrulama-sonuçları.csv');
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
           }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          Export Results
+          Sonuçları Dışa Aktar
         </button>
       </div>
     </div>

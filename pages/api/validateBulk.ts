@@ -4,10 +4,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { smtpValidator } from '../../utils/smtpValidator';
 import type { 
   SESValidationResult, 
-  ValidationStatistics, 
-  BulkValidationResult 
+  ValidationStatistics 
 } from '../../utils/types';
-import { batchEmails } from '../../utils/batchEmails';
 
 interface ValidationResponse {
   results: SESValidationResult[];
@@ -33,39 +31,39 @@ export default async function validateBulk(
   res: NextApiResponse<ValidationResponse | ErrorResponse>
 ) {
   if (req.method !== 'POST') {
-    console.error(`Invalid method: ${req.method}. Only POST is allowed.`);
-    return res.status(405).json({ error: 'Method not allowed' });
+    console.error(`Geçersiz yöntem: ${req.method}. Sadece POST izin veriliyor.`);
+    return res.status(405).json({ error: 'Yöntem izin verilmedi' });
   }
 
   try {
     const { emails } = req.body;
 
-    const MAX_EMAILS = 500; // Define maximum emails per request
+    const MAX_EMAILS = 500; // İzin verilen maksimum e-posta sayısı
 
-    // Validate request body
+    // İstek gövdesini doğrulama
     if (!emails?.length) {
-      console.error(`Bad Request: No emails provided`);
+      console.error(`Hatalı İstek: Hiç e-posta sağlanmadı`);
       return res.status(400).json({ 
-        error: 'Missing required fields',
-        details: 'No emails provided'
+        error: 'Gerekli alanlar eksik',
+        details: 'Hiç e-posta sağlanmadı'
       });
     }
 
     if (emails.length > MAX_EMAILS) {
-      console.error(`Too many emails: ${emails.length}. Maximum allowed is ${MAX_EMAILS}.`);
+      console.error(`Çok fazla e-posta: ${emails.length}. Maksimum izin verilen: ${MAX_EMAILS}.`);
       return res.status(400).json({
-        error: `Too many emails. Maximum allowed is ${MAX_EMAILS}.`,
+        error: `Çok fazla e-posta. Maksimum izin verilen: ${MAX_EMAILS}.`,
       });
     }
 
-    console.log(`Starting bulk validation for ${emails.length} emails.`);
+    console.log(`Toplu doğrulama başlatılıyor: ${emails.length} e-posta.`);
 
     const validationResults = await smtpValidator.validateBulk(emails);
 
-    console.log(`Bulk validation completed. Success: ${validationResults.filter(r => r.is_valid).length}, Failed: ${validationResults.filter(r => !r.is_valid).length}`);
+    console.log(`Toplu doğrulama tamamlandı. Başarılı: ${validationResults.filter(r => r.is_valid).length}, Başarısız: ${validationResults.filter(r => !r.is_valid).length}`);
 
-    // Calculate statistics
-    const stats = {
+    // İstatistikleri hesaplama
+    const stats: ValidationStatistics = {
       total: validationResults.length,
       verified: validationResults.filter(r => r.is_valid).length,
       failed: validationResults.filter(r => !r.is_valid).length,
@@ -90,11 +88,11 @@ export default async function validateBulk(
     });
 
   } catch (error) {
-    console.error('Validation failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    console.error('Doğrulama başarısız oldu:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Bir hata oluştu';
 
     return res.status(500).json({ 
-      error: 'Validation failed', 
+      error: 'Doğrulama başarısız oldu', 
       details: errorMessage 
     });
   }

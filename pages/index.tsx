@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
-import AWSCredentialsForm from '../components/AWSCredentialsForm'; // Bu dosya silinecek
 import EmailValidationResults from '../components/EmailValidationResults';
 import { batchEmails } from '../utils/batchEmails';
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
@@ -49,9 +48,9 @@ export default function Home() {
 
     setIsValidating(true);
     setError(null);
-    addLog('Starting validation process...', 'info');
+    addLog('Doğrulama süreci başlatılıyor...', 'info');
 
-    const BATCH_SIZE = 500; // Define batch size
+    const BATCH_SIZE = 500; // Batch boyutu
     const emailBatches = batchEmails(emails, BATCH_SIZE);
     const totalBatches = emailBatches.length;
     let allResults: SESValidationResult[] = [];
@@ -59,7 +58,7 @@ export default function Home() {
     try {
       for (let i = 0; i < totalBatches; i++) {
         const batch = emailBatches[i];
-        addLog(`Validating batch ${i + 1} of ${totalBatches}`, 'info');
+        addLog(`Batch ${i + 1} / ${totalBatches} doğrulanıyor`, 'info');
 
         const response = await fetch('/api/validateBulk', {
           method: 'POST',
@@ -72,23 +71,23 @@ export default function Home() {
         });
 
         if (!response.ok) {
-          let errorData: ErrorResponse = { error: 'Validation failed' };
+          let errorData: ErrorResponse = { error: 'Doğrulama başarısız oldu' };
           try {
             errorData = await response.json();
           } catch (parseError) {
-            console.error('Failed to parse error response:', parseError);
-            throw new Error('Failed to parse error response from server.');
+            console.error('Hata yanıtı çözümlenemedi:', parseError);
+            throw new Error('Sunucudan gelen hata yanıtı çözümlenemedi.');
           }
-          throw new Error(errorData.error || 'Validation failed');
+          throw new Error(errorData.error || 'Doğrulama başarısız oldu');
         }
 
         const data: ValidationResponse = await response.json();
 
         allResults = allResults.concat(data.results);
-        addLog(`Batch ${i + 1} validated successfully`, 'success');
+        addLog(`Batch ${i + 1} başarıyla doğrulandı`, 'success');
       }
 
-      // After all batches are processed, perform aggregate analysis
+      // Tüm batchler işlendiğinde, toplu analiz yap
       const bounceMetrics = bouncePredictor.predictBounceRate(allResults);
 
       const enhancedStats: ValidationStatistics = {
@@ -119,13 +118,13 @@ export default function Home() {
         stats: enhancedStats
       });
 
-      addLog(`All batches validated successfully`, 'success');
-      addLog(`Found ${allResults.filter(r => r.is_valid).length} valid emails`, 'success');
-      addLog(`Predicted bounce rate: ${bounceMetrics.predictedRate}%`, 'info');
+      addLog(`Tüm batchler başarıyla doğrulandı`, 'success');
+      addLog(`${allResults.filter(r => r.is_valid).length} geçerli e-posta bulundu`, 'success');
+      addLog(`Tahmini bounce oranı: ${bounceMetrics.predictedRate}%`, 'info');
 
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'An error occurred');
-      addLog('Validation failed', 'error');
+      setError(error instanceof Error ? error.message : 'Bir hata oluştu');
+      addLog('Doğrulama başarısız oldu', 'error');
     } finally {
       setIsValidating(false);
     }
@@ -135,7 +134,7 @@ export default function Home() {
     <>
       <Head>
         <title>Email Validator</title>
-        <meta name="description" content="Validate emails using DNS and SMTP" />
+        <meta name="description" content="DNS ve SMTP kullanarak e-postaları doğrulayın" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -152,7 +151,7 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="space-y-6">
               <div className="bg-white rounded-xl shadow-sm p-6">
-                <h2 className="text-lg font-semibold mb-4">Upload Email List</h2>
+                <h2 className="text-lg font-semibold mb-4">E-posta Listesi Yükle</h2>
                 <FileUpload onEmailsUploaded={setEmails} />
               </div>
 
@@ -165,7 +164,7 @@ export default function Home() {
                     : 'bg-blue-600 hover:bg-blue-700'
                 } text-white py-3 rounded-xl font-medium transition-colors`}
               >
-                {isValidating ? 'Validating...' : 'Start Validation'}
+                {isValidating ? 'Doğrulanıyor...' : 'Doğrulamayı Başlat'}
               </button>
             </div>
 
@@ -191,10 +190,10 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Log Display Section */}
+          {/* Log Gösterim Bölümü */}
           {logs.length > 0 && (
             <div className="mt-8 bg-gray-100 p-4 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Logs</h2>
+              <h2 className="text-xl font-semibold mb-4">Loglar</h2>
               <ul className="space-y-2">
                 {logs.map((log, index) => (
                   <li key={index} className={`p-2 rounded ${getLogStyle(log.type)}`}>
@@ -210,7 +209,7 @@ export default function Home() {
   );
 }
 
-// Helper function to determine log style based on type
+// Yardımcı Fonksiyon: Log stilini belirler
 function getLogStyle(type: 'info' | 'success' | 'error' | 'warning') {
   switch (type) {
     case 'success':
