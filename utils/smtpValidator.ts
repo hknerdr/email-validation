@@ -207,7 +207,7 @@ class SMTPValidator {
   }
 
   public async validateBulk(emails: string[]): Promise<SMTPValidationResult[]> {
-    const limit = pLimit(2); // Reduced concurrency
+    const limit = pLimit(2); // Adjust concurrency as needed
     const results: SMTPValidationResult[] = [];
 
     const validationPromises = emails.map(email =>

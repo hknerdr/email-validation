@@ -2,10 +2,9 @@
 
 import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
-import { useCredentials } from '../context/CredentialsContext';
-import AWSCredentialsForm from '../components/AWSCredentialsForm';
+import AWSCredentialsForm from '../components/AWSCredentialsForm'; // Bu dosya silinecek
 import EmailValidationResults from '../components/EmailValidationResults';
-import { batchEmails } from '../utils/batchEmails'; // Import batching utility
+import { batchEmails } from '../utils/batchEmails';
 import { BounceRatePrediction } from '../components/BounceRatePrediction';
 import type { SESValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
@@ -15,9 +14,6 @@ import { bouncePredictor } from '../utils/bounceRatePredictor';
 interface ValidationResponse {
   results: SESValidationResult[];
   stats: ValidationStatistics;
-  totalProcessed: number;
-  successful: number;
-  failed: number;
 }
 
 interface ErrorResponse {
@@ -26,7 +22,6 @@ interface ErrorResponse {
 }
 
 export default function Home() {
-  const { credentials, isVerified, setCredentials } = useCredentials();
   const [emails, setEmails] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<{
@@ -49,23 +44,8 @@ export default function Home() {
     }]);
   }, []);
 
-  const handleCredentialsSubmit = useCallback(async (creds: {
-    accessKeyId: string;
-    secretAccessKey: string;
-    region: string;
-  }) => {
-    try {
-      await setCredentials(creds);
-      addLog('AWS credentials verified successfully', 'success');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to verify credentials';
-      setError(errorMessage);
-      addLog('Failed to verify AWS credentials', 'error');
-    }
-  }, [setCredentials, addLog]);
-
   const handleValidation = async () => {
-    if (!credentials || !emails.length) return;
+    if (!emails.length) return;
 
     setIsValidating(true);
     setError(null);
@@ -87,8 +67,7 @@ export default function Home() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ 
-            emails: batch,
-            credentials 
+            emails: batch
           }),
         });
 
@@ -116,17 +95,17 @@ export default function Home() {
         total: allResults.length,
         verified: allResults.filter(r => r.is_valid).length,
         failed: allResults.filter(r => !r.is_valid).length,
-        pending: allResults.filter(r => r.verification_status === 'Pending').length,
+        pending: 0,
         domains: {
           total: new Set(allResults.map(r => r.email.split('@')[1])).size,
           verified: new Set(
             allResults
-              .filter(r => r.details.domain_status.verified)
+              .filter(r => r.is_valid)
               .map(r => r.email.split('@')[1])
           ).size
         },
         dkim: {
-          enabled: allResults.filter(r => r.details.domain_status.has_dkim).length
+          enabled: 0 // DKIM bilgisi olmadığından 0 olarak ayarlanır
         },
         deliverability: {
           score: 100 - bounceMetrics.predictedRate,
@@ -155,8 +134,8 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>AWS SES Email Validator</title>
-        <meta name="description" content="Validate emails using AWS SES" />
+        <title>Email Validator</title>
+        <meta name="description" content="Validate emails using DNS and SMTP" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
@@ -164,57 +143,53 @@ export default function Home() {
         <header className="bg-white/30 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <h1 className="text-3xl font-bold text-gray-900">
-              AWS SES Email Validator
+              Email Validator
             </h1>
           </div>
         </header>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {!isVerified ? (
-            <AWSCredentialsForm onCredentialsSubmit={handleCredentialsSubmit} />
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="space-y-6">
-                <div className="bg-white rounded-xl shadow-sm p-6">
-                  <h2 className="text-lg font-semibold mb-4">Upload Email List</h2>
-                  <FileUpload onEmailsUploaded={setEmails} /> {/* Correct Usage */}
-                </div>
-
-                <button
-                  onClick={handleValidation}
-                  disabled={isValidating || !emails.length}
-                  className={`w-full ${
-                    isValidating || !emails.length
-                      ? 'bg-gray-300 cursor-not-allowed'
-                      : 'bg-blue-600 hover:bg-blue-700'
-                  } text-white py-3 rounded-xl font-medium transition-colors`}
-                >
-                  {isValidating ? 'Validating...' : 'Start Validation'}
-                </button>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="space-y-6">
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h2 className="text-lg font-semibold mb-4">Upload Email List</h2>
+                <FileUpload onEmailsUploaded={setEmails} />
               </div>
 
-              <div className="lg:col-span-2 space-y-6">
-                {isValidating && <LoadingState />}
-                {validationResults && (
-                  <>
-                    <EmailValidationResults 
-                      results={validationResults.results}
-                      stats={validationResults.stats}
-                    />
-                    <BounceRatePrediction
-                      predictedRate={validationResults.stats.deliverability?.predictedBounceRate || 0}
-                      totalEmails={validationResults.stats.total}
-                    />
-                  </>
-                )}
-                {error && (
-                  <div className="bg-red-50 border-l-4 border-red-500 p-4">
-                    <p className="text-red-700">{error}</p>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={handleValidation}
+                disabled={isValidating || !emails.length}
+                className={`w-full ${
+                  isValidating || !emails.length
+                    ? 'bg-gray-300 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } text-white py-3 rounded-xl font-medium transition-colors`}
+              >
+                {isValidating ? 'Validating...' : 'Start Validation'}
+              </button>
             </div>
-          )}
+
+            <div className="lg:col-span-2 space-y-6">
+              {isValidating && <LoadingState />}
+              {validationResults && (
+                <>
+                  <EmailValidationResults 
+                    results={validationResults.results}
+                    stats={validationResults.stats}
+                  />
+                  <BounceRatePrediction
+                    predictedRate={validationResults.stats.deliverability?.predictedBounceRate || 0}
+                    totalEmails={validationResults.stats.total}
+                  />
+                </>
+              )}
+              {error && (
+                <div className="bg-red-50 border-l-4 border-red-500 p-4">
+                  <p className="text-red-700">{error}</p>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Log Display Section */}
           {logs.length > 0 && (

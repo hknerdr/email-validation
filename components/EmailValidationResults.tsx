@@ -1,32 +1,13 @@
 // components/EmailValidationResults.tsx
 import React from 'react';
-// Removed unused 'Line' import
 import { DomainVerificationStatus } from './DomainVerificationStatus';
 import { DeliverabilityMetrics } from './DeliverabilityMetrics';
-import { DKIMStatusDisplay } from './DKIMStatusDisplay';
 import { BounceRatePrediction } from './BounceRatePrediction';
 import type { SESValidationResult } from '../utils/types';
 
 interface Props {
   results: SESValidationResult[];
-  stats: {
-    total: number;
-    verified: number;
-    failed: number;
-    pending: number;
-    domains: {
-      total: number;
-      verified: number;
-    };
-    dkim: {
-      enabled: number;
-    };
-    deliverability?: {
-      score: number;
-      predictedBounceRate: number;
-      recommendations: string[];
-    };
-  };
+  stats: ValidationStatistics;
 }
 
 const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
@@ -52,18 +33,13 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
         </div>
         
         <div className="bg-yellow-50 rounded-xl shadow-sm p-6">
-          <h3 className="text-sm font-medium text-yellow-600">Pending</h3>
-          <p className="text-3xl font-bold text-yellow-700 mt-2">{stats.pending}</p>
+          <h3 className="text-sm font-medium text-yellow-600">Domains</h3>
+          <p className="text-3xl font-bold text-yellow-700 mt-2">{stats.domains.total}</p>
+          <p className="text-sm text-yellow-600 mt-1">
+            {stats.domains.verified} verified
+          </p>
         </div>
       </div>
-
-      {/* Deliverability Score */}
-      {stats.deliverability && (
-        <DeliverabilityMetrics 
-          score={stats.deliverability.score}
-          recommendations={stats.deliverability.recommendations}
-        />
-      )}
 
       {/* Domain Status */}
       <div className="bg-white rounded-xl shadow-sm p-6">
@@ -73,23 +49,17 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
             <DomainVerificationStatus
               key={domain}
               domain={domain}
-              results={results.filter(r => r.email.endsWith(`@${domain}`))} // Improved domain matching
+              results={results.filter(r => r.email.endsWith(`@${domain}`))}
             />
           ))}
         </div>
       </div>
 
-      {/* DKIM Status */}
-      <DKIMStatusDisplay 
-        domains={domains}
-        results={results}
-      />
-
-      {/* Bounce Rate Prediction */}
+      {/* Deliverability Score */}
       {stats.deliverability && (
-        <BounceRatePrediction
-          predictedRate={stats.deliverability.predictedBounceRate}
-          totalEmails={stats.total}
+        <DeliverabilityMetrics 
+          score={stats.deliverability.score}
+          recommendations={stats.deliverability.recommendations}
         />
       )}
 
@@ -115,13 +85,13 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  DKIM
+                  MX Records
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  MX Records
+                  SMTP Validation
                 </th>
                 <th
                   scope="col"
@@ -140,29 +110,27 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span
                       className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        result.verification_status === 'Success'
+                        result.is_valid
                           ? 'bg-green-100 text-green-800'
-                          : result.verification_status === 'Failed'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
                       }`}
-                      aria-label={`Verification status: ${result.verification_status}`} // Accessibility improvement
+                      aria-label={`Verification status: ${result.is_valid ? 'Valid' : 'Invalid'}`}
                     >
-                      {result.verification_status}
+                      {result.is_valid ? 'Valid' : 'Invalid'}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {result.details.domain_status.has_dkim ? (
-                      <span className="text-green-600" aria-label="DKIM Enabled">✓</span>
-                    ) : (
-                      <span className="text-red-600" aria-label="DKIM Disabled">✗</span>
-                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     {result.details.domain_status.has_mx_records ? (
                       <span className="text-green-600" aria-label="MX Records Present">✓</span>
                     ) : (
                       <span className="text-red-600" aria-label="MX Records Missing">✗</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {result.details.recipient_accepted ? (
+                      <span className="text-green-600" aria-label="SMTP Validation Passed">✓</span>
+                    ) : (
+                      <span className="text-red-600" aria-label="SMTP Validation Failed">✗</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
@@ -173,6 +141,37 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Export Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => {
+            const csv = [
+              ['Email', 'Status', 'MX Records', 'SMTP Validation', 'Details'],
+              ...results.map(r => [
+                r.email,
+                r.is_valid ? 'Valid' : 'Invalid',
+                r.details.domain_status.has_mx_records ? '✓' : '✗',
+                r.details.recipient_accepted ? '✓' : '✗',
+                r.reason || 'No issues found'
+              ])
+            ].map(row => row.join(',')).join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'validation-results.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Export Results
+        </button>
       </div>
     </div>
   );

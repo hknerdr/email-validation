@@ -1,16 +1,5 @@
 // utils/types.ts
 
-export interface DKIMAttributes {
-  tokens?: string[];
-  status: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
-}
-
-export interface VerificationAttributes {
-  verificationToken?: string;
-  verificationStatus: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
-  dkimAttributes?: DKIMAttributes;
-}
-
 export interface DomainStatus {
   verified: boolean;
   has_mx_records?: boolean;
@@ -19,14 +8,13 @@ export interface DomainStatus {
   dmarc_status?: 'pass' | 'fail' | 'none';
 }
 
-export interface SESValidationResult {
+export interface EmailValidationResult {
   email: string;
   is_valid: boolean;
   verification_status?: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
   reason?: string;
   details: {
     domain_status: DomainStatus;
-    verification_attributes?: VerificationAttributes;
   };
 }
 
@@ -50,14 +38,8 @@ export interface ValidationStatistics {
 }
 
 export interface BulkValidationResult {
-  results: SESValidationResult[];
+  results: EmailValidationResult[];
   stats: ValidationStatistics;
-}
-
-export interface EmailValidationError {
-  code: string;
-  message: string;
-  timestamp: string;
 }
 
 export interface BounceRateMetrics {
@@ -67,7 +49,6 @@ export interface BounceRateMetrics {
     domainReputation: number;
     listQuality: number;
     authenticationStatus: number;
-    historicalPerformance: number;
   };
   recommendations: string[];
 }

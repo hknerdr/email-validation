@@ -1,19 +1,19 @@
 // pages/api/validateBulk.ts
 
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createHybridValidator } from '../../utils/hybridValidator';
-import type { SESValidationResult, ValidationStatistics, BulkValidationResult } from '../../utils/types';
+import { smtpValidator } from '../../utils/smtpValidator';
+import type { 
+  SESValidationResult, 
+  ValidationStatistics, 
+  BulkValidationResult 
+} from '../../utils/types';
+import { batchEmails } from '../../utils/batchEmails';
 
-// Define the shape of a successful validation response
 interface ValidationResponse {
   results: SESValidationResult[];
   stats: ValidationStatistics;
-  totalProcessed: number;
-  successful: number;
-  failed: number;
 }
 
-// Define the shape of an error response
 interface ErrorResponse {
   error: string;
   details?: string;
@@ -25,7 +25,6 @@ export const config = {
       sizeLimit: '4mb',
     },
     responseLimit: false,
-    externalResolver: true,
   },
 };
 
@@ -39,17 +38,16 @@ export default async function validateBulk(
   }
 
   try {
-    const { emails, credentials } = req.body;
+    const { emails } = req.body;
 
     const MAX_EMAILS = 500; // Define maximum emails per request
 
     // Validate request body
-    if (!emails?.length || !credentials?.accessKeyId || !credentials?.secretAccessKey) {
-      const missing = !emails?.length ? 'No emails provided' : 'Invalid AWS credentials';
-      console.error(`Bad Request: ${missing}`);
+    if (!emails?.length) {
+      console.error(`Bad Request: No emails provided`);
       return res.status(400).json({ 
         error: 'Missing required fields',
-        details: missing
+        details: 'No emails provided'
       });
     }
 
@@ -60,39 +58,44 @@ export default async function validateBulk(
       });
     }
 
-    const validator = createHybridValidator({
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-      region: credentials.region || 'us-east-1'
-    });
-
     console.log(`Starting bulk validation for ${emails.length} emails.`);
 
-    const validationResult: BulkValidationResult = await validator.validateBulk(emails);
+    const validationResults = await smtpValidator.validateBulk(emails);
 
-    console.log(`Bulk validation completed. Success: ${validationResult.stats.verified}, Failed: ${validationResult.stats.failed}`);
+    console.log(`Bulk validation completed. Success: ${validationResults.filter(r => r.is_valid).length}, Failed: ${validationResults.filter(r => !r.is_valid).length}`);
+
+    // Calculate statistics
+    const stats = {
+      total: validationResults.length,
+      verified: validationResults.filter(r => r.is_valid).length,
+      failed: validationResults.filter(r => !r.is_valid).length,
+      pending: 0,
+      domains: {
+        total: new Set(validationResults.map(r => r.email.split('@')[1])).size,
+        verified: new Set(
+          validationResults
+            .filter(r => r.is_valid)
+            .map(r => r.email.split('@')[1])
+        ).size
+      },
+      dkim: {
+        enabled: 0 // DKIM bilgisi olmadığından 0 olarak ayarlanır
+      },
+      deliverability: undefined, // Gelecekte eklenebilir
+    };
 
     return res.status(200).json({
-      results: validationResult.results,
-      stats: validationResult.stats,
-      totalProcessed: validationResult.results.length,
-      successful: validationResult.results.filter(r => r.is_valid).length,
-      failed: validationResult.results.filter(r => !r.is_valid).length
+      results: validationResults,
+      stats
     });
 
   } catch (error) {
     console.error('Validation failed:', error);
     const errorMessage = error instanceof Error ? error.message : 'An error occurred';
 
-    // Attempt to send detailed error response
-    try {
-      res.status(500).json({ 
-        error: 'Validation failed', 
-        details: errorMessage 
-      });
-    } catch (jsonError) {
-      console.error('Failed to send JSON error response:', jsonError);
-      res.status(500).end('Validation failed');
-    }
+    return res.status(500).json({ 
+      error: 'Validation failed', 
+      details: errorMessage 
+    });
   }
 }
