@@ -4,14 +4,14 @@ import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import EmailValidationResults from '../components/EmailValidationResults';
 import { batchEmails } from '../utils/batchEmails';
-import { BounceRatePrediction } from '../components/BounceRatePrediction';
-import type { SESValidationResult, ValidationStatistics } from '../utils/types';
+import BounceRatePrediction from '../components/BounceRatePrediction'; // Eğer kullanılıyorsa, kullanın; aksi halde kaldırın
+import type { EmailValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 import { bouncePredictor } from '../utils/bounceRatePredictor';
 
 interface ValidationResponse {
-  results: SESValidationResult[];
+  results: EmailValidationResult[];
   stats: ValidationStatistics;
 }
 
@@ -24,7 +24,7 @@ export default function Home() {
   const [emails, setEmails] = useState<string[]>([]);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<{
-    results: SESValidationResult[];
+    results: EmailValidationResult[];
     stats: ValidationStatistics;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +53,7 @@ export default function Home() {
     const BATCH_SIZE = 500; // Batch boyutu
     const emailBatches = batchEmails(emails, BATCH_SIZE);
     const totalBatches = emailBatches.length;
-    let allResults: SESValidationResult[] = [];
+    let allResults: EmailValidationResult[] = [];
 
     try {
       for (let i = 0; i < totalBatches; i++) {
