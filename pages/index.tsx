@@ -4,11 +4,12 @@ import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import EmailValidationResults from '../components/EmailValidationResults';
 import { batchEmails } from '../utils/batchEmails';
-import BounceRatePrediction from '../components/BounceRatePrediction'; // Eğer kullanılıyorsa, kullanın; aksi halde kaldırın
+import BounceRatePrediction from '../components/BounceRatePrediction';
 import type { EmailValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 import { bouncePredictor } from '../utils/bounceRatePredictor';
+import DKIMStatusDisplay from '../components/DKIMStatusDisplay'; // Ensure correct import
 
 interface ValidationResponse {
   results: EmailValidationResult[];
@@ -104,7 +105,7 @@ export default function Home() {
           ).size
         },
         dkim: {
-          enabled: 0 // DKIM bilgisi olmadığından 0 olarak ayarlanır
+          enabled: allResults.filter(r => r.details.domain_status.has_dkim).length
         },
         deliverability: {
           score: 100 - bounceMetrics.predictedRate,
@@ -128,6 +129,16 @@ export default function Home() {
     } finally {
       setIsValidating(false);
     }
+  };
+
+  // Prepare DKIM data for display
+  const getDKIMData = () => {
+    if (!validationResults) return [];
+    const domains = Array.from(new Set(validationResults.results.map(r => r.email.split('@')[1])));
+    return domains.map(domain => ({
+      domain,
+      hasDKIM: validationResults.results.some(r => r.email.endsWith(`@${domain}`) && r.details.domain_status.has_dkim)
+    }));
   };
 
   return (
@@ -179,6 +190,9 @@ export default function Home() {
                   <BounceRatePrediction
                     predictedRate={validationResults.stats.deliverability?.predictedBounceRate || 0}
                     totalEmails={validationResults.stats.total}
+                  />
+                  <DKIMStatusDisplay
+                    domains={getDKIMData()}
                   />
                 </>
               )}
