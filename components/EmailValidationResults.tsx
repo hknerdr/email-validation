@@ -1,4 +1,5 @@
 // components/EmailValidationResults.tsx
+
 import React from 'react';
 import { DomainVerificationStatus } from './DomainVerificationStatus';
 import { DeliverabilityMetrics } from './DeliverabilityMetrics';
@@ -85,12 +86,14 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
                   MX Kayıtları
+                  <span className="ml-1 text-xs text-gray-400" title="MX Record Validation">ℹ️</span>
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
                   SMTP Doğrulama
+                  <span className="ml-1 text-xs text-gray-400" title="SMTP Validation">ℹ️</span>
                 </th>
                 <th
                   scope="col"
@@ -177,3 +180,18 @@ const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
 };
 
 export default EmailValidationResults;
+
+// Yardımcı Fonksiyon: Log stilini belirler
+function getLogStyle(type: 'info' | 'success' | 'error' | 'warning') {
+  switch (type) {
+    case 'success':
+      return 'bg-green-100 text-green-800';
+    case 'error':
+      return 'bg-red-100 text-red-800';
+    case 'warning':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'info':
+    default:
+      return 'bg-blue-100 text-blue-800';
+  }
+}

@@ -4,11 +4,11 @@ import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import EmailValidationResults from '../components/EmailValidationResults';
 import { batchEmails } from '../utils/batchEmails';
-import { BounceRatePrediction } from '../components/BounceRatePrediction'; // Adlandırılmış İçe Aktarma
+import BounceRatePrediction from '../components/BounceRatePrediction'; // Default Import
 import type { EmailValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
-import DKIMStatusDisplay from '../components/DKIMStatusDisplay'; // Doğru İçe Aktarım
+import DKIMStatusDisplay from '../components/DKIMStatusDisplay'; // Correct Import
 
 interface ValidationResponse {
   results: EmailValidationResult[];
@@ -235,4 +235,18 @@ function getLogStyle(type: 'info' | 'success' | 'error' | 'warning') {
     default:
       return 'bg-blue-100 text-blue-800';
   }
+}
+
+// Yardımcı Fonksiyon: Bounce Rate Prediction (Örnek)
+function bounceRatePrediction(results: EmailValidationResult[]) {
+  // Basit bir tahmin örneği
+  const invalidCount = results.filter(r => !r.is_valid).length;
+  const total = results.length;
+  const predictedRate = total === 0 ? 0 : (invalidCount / total) * 100;
+  const recommendations = predictedRate > 20 ? ['Clean your email list', 'Implement double opt-in'] : [];
+
+  return {
+    predictedRate,
+    recommendations
+  };
 }
