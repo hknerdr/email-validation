@@ -8,7 +8,7 @@ import BounceRatePrediction from '../components/BounceRatePrediction';
 import type { EmailValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
-import { bouncePredictor } from '../utils/bounceRatePredictor';
+import DKIMStatusDisplay from '../components/DKIMStatusDisplay'; // Doğru İçe Aktarım
 
 interface ValidationResponse {
   results: EmailValidationResult[];
@@ -88,7 +88,7 @@ export default function Home() {
       }
 
       // Tüm batchler işlendiğinde, toplu analiz yap
-      const bounceMetrics = bouncePredictor.predictBounceRate(allResults);
+      const bounceMetrics = bounceRatePrediction(allResults); // Eğer `bounceRatePrediction` fonksiyonu varsa
 
       const enhancedStats: ValidationStatistics = {
         total: allResults.length,
@@ -130,7 +130,7 @@ export default function Home() {
     }
   };
 
-  // Prepare DKIM data for display
+  // DKIM verilerini görüntülemek için hazırlık
   const getDKIMData = () => {
     if (!validationResults) return [];
     const domains = Array.from(new Set(validationResults.results.map(r => r.email.split('@')[1])));
