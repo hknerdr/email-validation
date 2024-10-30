@@ -4,27 +4,27 @@ import { createConnection } from 'net';
 import dns from 'dns/promises';
 import pLimit from 'p-limit';
 import { Cache } from './cache';
+import type { EmailValidationResult, DomainStatus } from './types';
 
 interface SMTPValidationResult {
   email: string;
   is_valid: boolean;
-  has_mx_records: boolean;
   smtp_response?: string;
-  is_catch_all?: boolean;
   details: {
     connection_success: boolean;
     recipient_accepted: boolean;
     smtp_code?: number;
     smtp_message?: string;
+    domain_status: DomainStatus;
   };
 }
 
 class SMTPValidator {
-  private smtpCache: Cache<boolean>; // Cache for SMTP validation results
+  private smtpCache: Cache<boolean>;
 
   constructor() {
     this.smtpCache = new Cache<boolean>({
-      ttl: 12 * 60 * 60 * 1000, // 12 hours
+      ttl: 12 * 60 * 60 * 1000, // 12 saat
       maxSize: 5000
     });
   }
@@ -41,7 +41,7 @@ class SMTPValidator {
   private createSMTPConnection(host: string, port: number = 25): Promise<any> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(port, host);
-      const timeout = 10000; // 10 seconds timeout
+      const timeout = 10000; // 10 saniye timeout
 
       socket.setTimeout(timeout);
       
@@ -68,49 +68,33 @@ class SMTPValidator {
     });
   }
 
-  // Optional: Implement catch-all detection if needed
-  private async testCatchAll(socket: any, domain: string): Promise<boolean> {
-    try {
-      // Test with a random email that's unlikely to exist
-      const randomEmail = `test-${Math.random().toString(36).substring(7)}@${domain}`;
-      const response = await this.sendSMTPCommand(socket, `RCPT TO:<${randomEmail}>`);
-      return response.startsWith('250'); // 250 means accepted
-    } catch {
-      return false;
-    }
-  }
-
-  public async validateEmail(email: string): Promise<SMTPValidationResult> {
+  public async validateEmail(email: string): Promise<EmailValidationResult> {
     const [localPart, domain] = email.split('@');
-    const result: SMTPValidationResult = {
+    const result: EmailValidationResult = {
       email,
       is_valid: false,
-      has_mx_records: false,
       details: {
         connection_success: false,
-        recipient_accepted: false
+        recipient_accepted: false,
+        domain_status: {
+          has_mx_records: false,
+          has_dkim: false,
+          has_spf: false,
+          dmarc_status: 'none'
+        }
       }
     };
 
     try {
-      // Check if SMTP validation for this domain is cached
-      if (this.smtpCache.get(domain)) {
-        result.is_valid = true;
-        result.has_mx_records = true;
-        result.details.connection_success = true;
-        result.details.recipient_accepted = true;
-        return result;
-      }
-
-      // 1. Get MX records
+      // MX kayıtlarını kontrol et
       const mxRecords = await this.getMxRecords(domain);
-      result.has_mx_records = mxRecords.length > 0;
+      result.details.domain_status.has_mx_records = mxRecords.length > 0;
 
       if (!mxRecords.length) {
         return result;
       }
 
-      // 2. Try SMTP connection with each MX server with limited retries
+      // SMTP bağlantısını kur
       let socket;
       for (const mxHost of mxRecords) {
         try {
@@ -127,70 +111,30 @@ class SMTPValidator {
         return result;
       }
 
-      // 3. SMTP conversation with timeouts and retries
       try {
-        // Set socket timeout
-        socket.setTimeout(10000); // 10 seconds
-
-        // Helper function to send command and wait for response
-        const sendCommand = async (cmd: string): Promise<string> => {
-          return new Promise((resolve, reject) => {
-            socket.write(cmd + '\r\n');
-            socket.once('data', (data: Buffer) => {
-              resolve(data.toString());
-            });
-            socket.once('error', (err: Error) => {
-              reject(err);
-            });
-            socket.once('timeout', () => {
-              reject(new Error('SMTP connection timed out'));
-            });
-          });
-        };
-
-        // Read initial server greeting
-        await new Promise(resolve => socket.once('data', resolve));
-
-        // Send HELO
-        const heloResponse = await sendCommand(`HELO validator.local`);
+        // SMTP komutlarını gönder
+        const heloResponse = await this.sendSMTPCommand(socket, `HELO validator.local`);
         if (!heloResponse.startsWith('250')) {
           throw new Error('HELO failed');
         }
 
-        // Send MAIL FROM
-        const fromResponse = await sendCommand(`MAIL FROM:<validator@validator.local>`);
-        if (!fromResponse.startsWith('250')) {
+        const mailFromResponse = await this.sendSMTPCommand(socket, `MAIL FROM:<validator@validator.local>`);
+        if (!mailFromResponse.startsWith('250')) {
           throw new Error('MAIL FROM failed');
         }
 
-        // Send RCPT TO using the instance method 'sendSMTPCommand'
-        const rcptResponse = await this.sendSMTPCommand(socket, `RCPT TO:<${email}>`);
-        result.smtp_response = rcptResponse;
-        result.details.smtp_code = parseInt(rcptResponse.substring(0, 3));
-        result.details.smtp_message = rcptResponse.substring(4);
-        
-        // Check if recipient was accepted
-        result.details.recipient_accepted = rcptResponse.startsWith('250');
-        
-        // If accepted, optionally check if it's a catch-all domain
-        if (result.details.recipient_accepted) {
-          // Optional: Implement catch-all detection only if necessary
-          // For performance, consider skipping or making it optional
-          // result.is_catch_all = await this.testCatchAll(socket, domain);
-        }
+        const rcptToResponse = await this.sendSMTPCommand(socket, `RCPT TO:<${email}>`);
+        result.details.smtp_response = rcptToResponse;
+        result.details.recipient_accepted = rcptToResponse.startsWith('250');
 
-        // Determine validity (excluding catch-all for speed)
-        result.is_valid = result.details.recipient_accepted; 
-        // If catch-all is implemented:
-        // result.is_valid = result.details.recipient_accepted && !result.is_catch_all;
+        // Validity
+        result.is_valid = result.details.recipient_accepted;
 
-        // Cache successful SMTP validation for this domain
-        if (result.is_valid) {
-          this.smtpCache.set(domain, true);
-        }
+        // DNS kayıtlarını tekrar kontrol edebilirsiniz (DKIM, SPF, DMARC)
+        // Örnek olarak, sadece MX kayıtlarını kontrol ettik. DKIM, SPF, DMARC kontrolünü ekleyebilirsiniz.
 
       } finally {
-        // Clean up
+        // Bağlantıyı kapat
         try {
           await this.sendSMTPCommand(socket, 'QUIT');
           socket.end();
@@ -200,15 +144,15 @@ class SMTPValidator {
       }
 
     } catch (error) {
-      result.smtp_response = error instanceof Error ? error.message : 'Unknown error';
+      result.details.smtp_response = error instanceof Error ? error.message : 'Unknown error';
     }
 
     return result;
   }
 
-  public async validateBulk(emails: string[]): Promise<SMTPValidationResult[]> {
-    const limit = pLimit(2); // Adjust concurrency as needed
-    const results: SMTPValidationResult[] = [];
+  public async validateBulk(emails: string[]): Promise<EmailValidationResult[]> {
+    const limit = pLimit(5); // Eşzamanlılık limiti
+    const results: EmailValidationResult[] = [];
 
     const validationPromises = emails.map(email =>
       limit(() => this.validateEmail(email))
@@ -222,4 +166,3 @@ class SMTPValidator {
 }
 
 export const smtpValidator = new SMTPValidator();
-export type { SMTPValidationResult };

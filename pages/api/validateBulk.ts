@@ -58,7 +58,7 @@ export default async function validateBulk(
 
     console.log(`Toplu doğrulama başlatılıyor: ${emails.length} e-posta.`);
 
-    const validationResults = await smtpValidator.validateBulk(emails);
+    const validationResults: EmailValidationResult[] = await smtpValidator.validateBulk(emails);
 
     console.log(`Toplu doğrulama tamamlandı. Başarılı: ${validationResults.filter(r => r.is_valid).length}, Başarısız: ${validationResults.filter(r => !r.is_valid).length}`);
 
@@ -67,7 +67,7 @@ export default async function validateBulk(
       total: validationResults.length,
       verified: validationResults.filter(r => r.is_valid).length,
       failed: validationResults.filter(r => !r.is_valid).length,
-      pending: 0,
+      pending: validationResults.filter(r => r.verification_status === 'Pending').length,
       domains: {
         total: new Set(validationResults.map(r => r.email.split('@')[1])).size,
         verified: new Set(

@@ -1,7 +1,6 @@
 // utils/types.ts
 
 export interface DomainStatus {
-  verified: boolean;
   has_mx_records: boolean;
   has_dkim: boolean;
   has_spf: boolean;

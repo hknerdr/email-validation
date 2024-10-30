@@ -9,7 +9,6 @@ import type { EmailValidationResult, ValidationStatistics } from '../utils/types
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
 import { bouncePredictor } from '../utils/bounceRatePredictor';
-import DKIMStatusDisplay from '../components/DKIMStatusDisplay'; // Ensure correct import
 
 interface ValidationResponse {
   results: EmailValidationResult[];
