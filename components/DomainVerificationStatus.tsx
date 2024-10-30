@@ -1,10 +1,10 @@
 // components/DomainVerificationStatus.tsx
 import React from 'react';
-import type { SESValidationResult } from '../utils/types';
+import type { EmailValidationResult } from '../utils/types';
 
 interface Props {
   domain: string;
-  results: SESValidationResult[];
+  results: EmailValidationResult[];
 }
 
 export const DomainVerificationStatus: React.FC<Props> = ({ domain, results }) => {

@@ -1,231 +1,179 @@
-// utils/hybridValidator.ts
+// components/EmailValidationResults.tsx
+import React from 'react';
+import { DomainVerificationStatus } from './DomainVerificationStatus';
+import { DeliverabilityMetrics } from './DeliverabilityMetrics';
+import type { EmailValidationResult, ValidationStatistics } from '../utils/types';
 
-import { SESClient } from "@aws-sdk/client-ses";
-import { smtpValidator } from './smtpValidator';
-import { bouncePredictor } from './bounceRatePredictor';
-import type { 
-  EmailValidationResult, 
-  BulkValidationResult, 
-  ValidationStatistics 
-} from './types';
-import { Cache } from './cache';
-import pLimit from 'p-limit';
-import dns from 'dns/promises';
-
-export class HybridValidator {
-  private sesClient: SESClient;
-  private dnsCache: Cache<{
-    hasMX: boolean;
-    hasSPF: boolean;
-    hasDMARC: boolean;
-  }>;
-
-  constructor(credentials: { accessKeyId: string; secretAccessKey: string; region: string }) {
-    this.sesClient = new SESClient({
-      region: credentials.region,
-      credentials: {
-        accessKeyId: credentials.accessKeyId,
-        secretAccessKey: credentials.secretAccessKey
-      },
-      maxAttempts: 5,
-      retryStrategy: undefined
-    });
-    this.dnsCache = new Cache({
-      ttl: 24 * 60 * 60 * 1000, // 24 hours
-      maxSize: 1000
-    });
-  }
-
-  private async checkDNSRecords(domain: string): Promise<{
-    hasMX: boolean;
-    hasSPF: boolean;
-    hasDMARC: boolean;
-  }> {
-    // Check cache first
-    const cached = this.dnsCache.get(domain);
-    if (cached) {
-      console.log(`Cache hit for DNS records of domain: ${domain}`);
-      return cached;
-    }
-
-    try {
-      const [mxRecords, txtRecords] = await Promise.all([
-        dns.resolveMx(domain),
-        dns.resolveTxt(domain)
-      ]);
-
-      const hasSPF = txtRecords.some(records => 
-        records.some(record => record.startsWith('v=spf1'))
-      );
-
-      let hasDMARC = false;
-      try {
-        const dmarcRecords = await dns.resolveTxt(`_dmarc.${domain}`);
-        hasDMARC = dmarcRecords.some(records =>
-          records.some(record => record.startsWith('v=DMARC1'))
-        );
-      } catch {
-        hasDMARC = false;
-      }
-
-      const dnsResults = {
-        hasMX: mxRecords.length > 0,
-        hasSPF,
-        hasDMARC
-      };
-
-      // Cache the DNS results
-      this.dnsCache.set(domain, dnsResults);
-      console.log(`Cached DNS records for domain: ${domain}`);
-
-      return dnsResults;
-    } catch (error) {
-      console.error(`DNS resolution failed for domain ${domain}:`, error);
-      return { hasMX: false, hasSPF: false, hasDMARC: false };
-    }
-  }
-
-  private async validateEmailFormat(email: string): Promise<EmailValidationResult> {
-    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-    const isValidFormat = emailRegex.test(email);
-
-    if (!isValidFormat) {
-      return {
-        email,
-        is_valid: false,
-        verification_status: 'Failed',
-        reason: 'Invalid email format',
-        details: {
-          domain_status: {
-            verified: false,
-            has_mx_records: false,
-            has_dkim: false,
-            has_spf: false,
-            dmarc_status: 'none'
-          }
-        }
-      };
-    }
-
-    return {
-      email,
-      is_valid: true,
-      verification_status: 'Pending',
-      details: {
-        domain_status: {
-          verified: false, // SES verification removed
-          has_mx_records: false,
-          has_dkim: false, // SES verification removed
-          has_spf: false,
-          dmarc_status: 'none'
-        }
-      }
-    };
-  }
-
-  public async validateEmail(email: string): Promise<EmailValidationResult> {
-    // Step 1: Format validation
-    const formatResult = await this.validateEmailFormat(email);
-    if (!formatResult.is_valid) {
-      return formatResult;
-    }
-
-    const domain = email.split('@')[1];
-
-    // Step 2: DNS checks
-    const dnsResults = await this.checkDNSRecords(domain);
-
-    // Step 3: SMTP validation
-    const smtpResult = await smtpValidator.validateEmail(email);
-
-    // Combine all results
-    const isValid = smtpResult.is_valid && dnsResults.hasMX && !smtpResult.is_catch_all;
-
-    return {
-      email,
-      is_valid: isValid,
-      verification_status: isValid ? 'Success' : 'Failed',
-      reason: !isValid ? this.determineFailureReason(smtpResult, dnsResults) : undefined,
-      details: {
-        domain_status: {
-          verified: false, // SES verification removed
-          has_mx_records: dnsResults.hasMX,
-          has_dkim: false, // SES verification removed
-          has_spf: dnsResults.hasSPF,
-          dmarc_status: dnsResults.hasDMARC ? 'pass' : 'none'
-        }
-      }
-    };
-  }
-
-  private determineFailureReason(smtpResult: any, dnsResults: any): string {
-    if (!dnsResults.hasMX) return 'No MX records found';
-    if (smtpResult.is_catch_all) return 'Catch-all domain detected';
-    if (!smtpResult.is_valid) return smtpResult.smtp_response || 'SMTP validation failed';
-    return 'Multiple validation checks failed';
-  }
-
-  public async validateBulk(emails: string[]): Promise<BulkValidationResult> {
-    const limit = pLimit(5); // Adjust concurrency as needed
-    const allResults: EmailValidationResult[] = [];
-    const uniqueDomains = new Set(emails.map(email => email.split('@')[1]));
-
-    // Pre-fetch DNS checks for all unique domains
-    const dnsCheckPromises = Array.from(uniqueDomains).map(domain => 
-      limit(() => this.checkDNSRecords(domain))
-    );
-    await Promise.all(dnsCheckPromises);
-
-    // Process emails with controlled concurrency
-    const validationPromises = emails.map(email =>
-      limit(() => this.validateEmail(email))
-    );
-
-    const validationResults = await Promise.all(validationPromises);
-    allResults.push(...validationResults);
-
-    // Calculate statistics
-    const stats = this.calculateStats(allResults);
-    
-    // Predict bounce rate
-    const bounceMetrics = bouncePredictor.predictBounceRate(allResults);
-    stats.deliverability = {
-      score: 100 - bounceMetrics.predictedRate,
-      predictedBounceRate: bounceMetrics.predictedRate,
-      recommendations: bounceMetrics.recommendations
-    };
-
-    return {
-      results: allResults,
-      stats
-    };
-  }
-
-  private calculateStats(results: EmailValidationResult[]): ValidationStatistics {
-    const domains = new Set(results.map(r => r.email.split('@')[1]));
-    const verifiedDomains = new Set(
-      results
-        .filter(r => r.is_valid)
-        .map(r => r.email.split('@')[1])
-    );
-
-    return {
-      total: results.length,
-      verified: results.filter(r => r.is_valid).length,
-      failed: results.filter(r => !r.is_valid).length,
-      pending: results.filter(r => r.verification_status === 'Pending').length,
-      domains: {
-        total: domains.size,
-        verified: verifiedDomains.size
-      },
-      dkim: {
-        enabled: results.filter(r => r.details.domain_status.has_dkim).length
-      },
-      deliverability: undefined, // Will be set after prediction
-    };
-  }
+interface Props {
+  results: EmailValidationResult[];
+  stats: ValidationStatistics;
 }
 
-export const createHybridValidator = (credentials: { accessKeyId: string; secretAccessKey: string; region: string }) => {
-  return new HybridValidator(credentials);
+const EmailValidationResults: React.FC<Props> = ({ results, stats }) => {
+  const domains = Array.from(new Set(results.map(r => r.email.split('@')[1])));
+
+  return (
+    <div className="space-y-6">
+      {/* Genel İstatistik Kartları */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h3 className="text-sm font-medium text-gray-500">Toplam İşlenen</h3>
+          <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+        </div>
+        
+        <div className="bg-green-50 rounded-xl shadow-sm p-6">
+          <h3 className="text-sm font-medium text-green-600">Doğrulandı</h3>
+          <p className="text-3xl font-bold text-green-700 mt-2">{stats.verified}</p>
+        </div>
+        
+        <div className="bg-red-50 rounded-xl shadow-sm p-6">
+          <h3 className="text-sm font-medium text-red-600">Başarısız</h3>
+          <p className="text-3xl font-bold text-red-700 mt-2">{stats.failed}</p>
+        </div>
+        
+        <div className="bg-yellow-50 rounded-xl shadow-sm p-6">
+          <h3 className="text-sm font-medium text-yellow-600">Domainler</h3>
+          <p className="text-3xl font-bold text-yellow-700 mt-2">{stats.domains.total}</p>
+          <p className="text-sm text-yellow-600 mt-1">
+            {stats.domains.verified} doğrulandı
+          </p>
+        </div>
+      </div>
+
+      {/* Domain Durumları */}
+      <div className="bg-white rounded-xl shadow-sm p-6">
+        <h3 className="text-lg font-semibold mb-4">Domain Doğrulama Durumu</h3>
+        <div className="space-y-4">
+          {domains.map(domain => (
+            <DomainVerificationStatus
+              key={domain}
+              domain={domain}
+              results={results.filter(r => r.email.endsWith(`@${domain}`))}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Deliverability Skoru */}
+      {stats.deliverability && (
+        <DeliverabilityMetrics 
+          score={stats.deliverability.score}
+          recommendations={stats.deliverability.recommendations}
+        />
+      )}
+
+      {/* Detaylı Sonuçlar Tablosu */}
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  E-posta
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Durum
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  MX Kayıtları
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  SMTP Doğrulama
+                </th>
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
+                  Detaylar
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {results.map((result, index) => (
+                <tr key={index}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {result.email}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span
+                      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        result.is_valid
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                      aria-label={`Doğrulama durumu: ${result.is_valid ? 'Geçerli' : 'Geçersiz'}`}
+                    >
+                      {result.is_valid ? 'Geçerli' : 'Geçersiz'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {result.details.domain_status.has_mx_records ? (
+                      <span className="text-green-600" aria-label="MX Kayıtları Mevcut">✓</span>
+                    ) : (
+                      <span className="text-red-600" aria-label="MX Kayıtları Eksik">✗</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {result.details.recipient_accepted ? (
+                      <span className="text-green-600" aria-label="SMTP Doğrulama Başarılı">✓</span>
+                    ) : (
+                      <span className="text-red-600" aria-label="SMTP Doğrulama Başarısız">✗</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {result.reason || 'Sorun bulunmadı'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Export Butonu */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => {
+            const csv = [
+              ['E-posta', 'Durum', 'MX Kayıtları', 'SMTP Doğrulama', 'Detaylar'],
+              ...results.map(r => [
+                r.email,
+                r.is_valid ? 'Geçerli' : 'Geçersiz',
+                r.details.domain_status.has_mx_records ? '✓' : '✗',
+                r.details.recipient_accepted ? '✓' : '✗',
+                r.reason || 'Sorun bulunmadı'
+              ])
+            ].map(row => row.join(',')).join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('hidden', '');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'doğrulama-sonuçları.csv');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          Sonuçları Dışa Aktar
+        </button>
+      </div>
+    </div>
+  );
 };
+
+export default EmailValidationResults;

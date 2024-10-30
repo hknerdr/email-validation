@@ -3,12 +3,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { smtpValidator } from '../../utils/smtpValidator';
 import type { 
-  SESValidationResult, 
+  EmailValidationResult, 
   ValidationStatistics 
 } from '../../utils/types';
 
 interface ValidationResponse {
-  results: SESValidationResult[];
+  results: EmailValidationResult[];
   stats: ValidationStatistics;
 }
 
@@ -77,7 +77,7 @@ export default async function validateBulk(
         ).size
       },
       dkim: {
-        enabled: 0 // DKIM bilgisi olmadığından 0 olarak ayarlanır
+        enabled: validationResults.filter(r => r.details.domain_status.has_dkim).length
       },
       deliverability: undefined, // Gelecekte eklenebilir
     };

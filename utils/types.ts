@@ -2,10 +2,18 @@
 
 export interface DomainStatus {
   verified: boolean;
-  has_mx_records?: boolean;
-  has_dkim?: boolean;
-  has_spf?: boolean;
-  dmarc_status?: 'pass' | 'fail' | 'none';
+  has_mx_records: boolean;
+  has_dkim: boolean;
+  has_spf: boolean;
+  dmarc_status: 'pass' | 'fail' | 'none';
+}
+
+export interface EmailValidationDetails {
+  connection_success: boolean;
+  recipient_accepted: boolean;
+  smtp_code?: number;
+  smtp_message?: string;
+  domain_status: DomainStatus;
 }
 
 export interface EmailValidationResult {
@@ -13,9 +21,7 @@ export interface EmailValidationResult {
   is_valid: boolean;
   verification_status?: 'Success' | 'Failed' | 'Pending' | 'NotStarted';
   reason?: string;
-  details: {
-    domain_status: DomainStatus;
-  };
+  details: EmailValidationDetails;
 }
 
 export interface ValidationStatistics {
