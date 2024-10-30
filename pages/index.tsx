@@ -4,7 +4,7 @@ import React, { useState, useCallback } from 'react';
 import Head from 'next/head';
 import EmailValidationResults from '../components/EmailValidationResults';
 import { batchEmails } from '../utils/batchEmails';
-import BounceRatePrediction from '../components/BounceRatePrediction';
+import { BounceRatePrediction } from '../components/BounceRatePrediction'; // Adlandırılmış İçe Aktarma
 import type { EmailValidationResult, ValidationStatistics } from '../utils/types';
 import LoadingState from '../components/LoadingState';
 import FileUpload from '../components/FileUpload';
@@ -94,7 +94,7 @@ export default function Home() {
         total: allResults.length,
         verified: allResults.filter(r => r.is_valid).length,
         failed: allResults.filter(r => !r.is_valid).length,
-        pending: 0,
+        pending: validationResults?.stats.pending || 0,
         domains: {
           total: new Set(allResults.map(r => r.email.split('@')[1])).size,
           verified: new Set(
